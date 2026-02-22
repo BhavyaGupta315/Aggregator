@@ -4,20 +4,22 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:padding="12dp"
-    android:background="?attr/android:colorBackground"
+    android:padding="16dp"
+    android:layout_marginBottom="8dp"
+    android:background="@drawable/medical_input_bg"
+    android:elevation="1dp"
     android:clickable="true"
     android:focusable="true">
 
     <ImageView
         android:id="@+id/fileIcon"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:src="@android:drawable/ic_menu_view"
-        android:layout_marginEnd="12dp"
+        android:layout_marginEnd="16dp"
+        android:layout_gravity="center_vertical"
         android:contentDescription="File Icon"
-        android:scaleType="centerInside"
-        app:tint="?attr/colorPrimary" />
+        app:tint="@color/med_green_primary" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -30,18 +32,18 @@
             android:id="@+id/fileNameText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
-            android:textColor="?attr/colorOnBackground"
+            android:textColor="@color/med_text_primary"
             android:text="File Name"/>
 
         <TextView
             android:id="@+id/fileDetailsText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="12sp"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginTop="4dp"
+            android:textSize="13sp"
+            android:textColor="@color/med_text_secondary"
+            android:layout_marginTop="2dp"
             android:text="Details"/>
     </LinearLayout>
 

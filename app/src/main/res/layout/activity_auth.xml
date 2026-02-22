@@ -2,7 +2,8 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="24dp">
+    android:padding="32dp"
+    android:background="@color/med_surface">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -12,8 +13,9 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Patient Registration / Login"
-            android:textSize="24sp"
+            android:text="Patient Portal"
+            android:textSize="22sp"
+            android:textColor="@color/med_green_primary"
             android:textStyle="bold"
             android:layout_gravity="center"
             android:layout_marginBottom="32dp"/>
@@ -21,49 +23,62 @@
         <EditText
             android:id="@+id/patientName"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="50dp"
             android:hint="Full Name"
+            android:paddingStart="16dp"
+            android:background="@drawable/medical_input_bg"
             android:inputType="textPersonName"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
 
         <EditText
             android:id="@+id/patientAge"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="50dp"
             android:hint="Age"
+            android:paddingStart="16dp"
+            android:background="@drawable/medical_input_bg"
             android:inputType="number"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
 
         <EditText
             android:id="@+id/patientGender"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Gender (M/F/O)"
+            android:layout_height="50dp"
+            android:hint="Gender"
+            android:paddingStart="16dp"
+            android:background="@drawable/medical_input_bg"
             android:inputType="text"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
 
         <EditText
             android:id="@+id/patientBloodType"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Blood Type (A+, O-, etc.)"
+            android:layout_height="50dp"
+            android:hint="Blood Type"
+            android:paddingStart="16dp"
+            android:background="@drawable/medical_input_bg"
             android:inputType="text"
             android:layout_marginBottom="32dp"/>
 
         <Button
             android:id="@+id/registerBtn"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
             android:text="Register"
-            style="@style/Widget.AppCompat.Button.Colored"
-            android:layout_marginBottom="16dp"/>
+            android:textAllCaps="false"
+            android:backgroundTint="@color/med_green_primary"
+            android:textColor="@color/white"
+            android:layout_marginBottom="12dp"/>
 
         <Button
             android:id="@+id/loginBtn"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Login (Already have records)"
-            style="@style/Widget.AppCompat.Button.Colored"/>
+            android:layout_height="56dp"
+            android:text="Access Existing Records"
+            android:textAllCaps="false"
+            android:backgroundTint="@color/white"
+            android:textColor="@color/med_green_primary"
+            style="@style/Widget.AppCompat.Button.Borderless"/>
 
     </LinearLayout>
 </ScrollView>

@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="20dp"
-    android:background="?attr/android:colorBackground"
+    android:background="?android:attr/windowBackground"
     tools:context=".SyncActivity">
 
     <TextView
@@ -16,7 +16,7 @@
         android:text="Preparing files..."
         android:textSize="20sp"
         android:textStyle="bold"
-        android:textColor="?attr/colorOnBackground"
+        android:textColor="?attr/editTextColor"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
@@ -42,7 +42,7 @@
         android:layout_height="wrap_content"
         android:text="Waiting to sync..."
         android:textSize="16sp"
-        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textColor="@android:color/secondary_text_dark"
         app:layout_constraintTop_toBottomOf="@id/syncProgressBar"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"

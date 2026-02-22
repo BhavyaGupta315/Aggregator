@@ -7,4 +7,10 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="med_green_primary">#2D8C7B</color>
+    <color name="med_green_light">#E8F5E9</color>
+    <color name="med_surface">#F5F7F6</color>
+    <color name="med_text_primary">#1A1C1B</color>
+    <color name="med_text_secondary">#5F6368</color>
+    <color name="med_border">#DADCE0</color>
 </resources>
