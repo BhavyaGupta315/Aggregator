@@ -1,12 +1,14 @@
 package com.example.aggregator
 
 import android.annotation.SuppressLint
+import android.content.IntentFilter
 import android.os.Bundle
 import android.util.Log
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 
@@ -84,5 +86,24 @@ class PatientShareActivity : AppCompatActivity() {
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
+    private val authReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val message = intent?.getStringExtra("step_message")
+            findViewById<TextView>(R.id.syncStatusText).text = message
+        }
+    }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    override fun onResume() {
+        super.onResume()
+
+        val filter = IntentFilter("NFC_AUTH_STEP")
+        val receiverFlags = ContextCompat.RECEIVER_NOT_EXPORTED
+        ContextCompat.registerReceiver(this, authReceiver, filter, receiverFlags)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterReceiver(authReceiver)
+    }
 }

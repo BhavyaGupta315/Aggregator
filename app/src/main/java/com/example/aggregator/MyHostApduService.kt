@@ -1,5 +1,6 @@
 package com.example.aggregator
 
+import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
@@ -9,6 +10,11 @@ import kotlin.compareTo
 import kotlin.math.min
 
 class MyHostApduService : HostApduService() {
+
+    private enum class AuthState { IDLE, KEY_RECEIVED, AUTHENTICATED }
+    private var currentAuthState = AuthState.IDLE
+    private var sessionKey: ByteArray? = null
+    private var encryptedKeyBuffer: ByteArray? = null
     private var transferMode = "NONE"
     private var textContent: String? = null
     private var fileContent: ByteArray? = null
@@ -18,14 +24,19 @@ class MyHostApduService : HostApduService() {
     private var currentFileIndex: Int = 0
 
     companion object {
-
-        // --- Class-level static references for sending operations ---
         private var sharedTransferMode = "NONE"
         private var sharedTextContent: String? = null
         private var sharedFileContent: ByteArray? = null
         private var sharedFileMimeType: String? = null
         private var sharedFileQueue: MutableList<FileData> = mutableListOf()
 
+        fun setSingleTextForTransfer(text: String) {
+            sharedTransferMode = "TEXT"
+            sharedTextContent = text
+            sharedFileContent = null
+            sharedFileQueue.clear()
+        }
+        // --- Class-level static references for sending operations ---
         fun setMultipleFilesForTransfer(files: List<FileData>) {
             sharedTransferMode = "MULTI_FILE"
             sharedFileQueue.clear()
@@ -49,31 +60,81 @@ class MyHostApduService : HostApduService() {
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
+        // Step 1: Selection
         if (Arrays.equals(commandApdu, Utils.SELECT_APD)) {
-            Log.d("HCE_SERVICE", "Application Selected.")
+            currentAuthState = AuthState.IDLE
+            sessionKey = null
+
+            // CRITICAL FIX 1: Reset indices on every new NFC tap
+            currentFileIndex = 0
             fileChunkOffset = 0
 
-            // Sync instance state with shared state
-            transferMode = sharedTransferMode
-            textContent = sharedTextContent
-            fileContent = sharedFileContent
-            fileMimeType = sharedFileMimeType
-            fileQueue.clear()
-            fileQueue.addAll(sharedFileQueue)
-
+            notifyUI("Step 1: Connection Established")
             return Utils.SELECT_OK_SW
         }
 
-        return when (transferMode) {
+        // Step 2: Key Exchange
+        val cmdKey = CryptoUtils.CMD_AUTH_SEND_KEY
+        if (commandApdu.take(cmdKey.size).toByteArray().contentEquals(cmdKey)) {
+            encryptedKeyBuffer = commandApdu.drop(cmdKey.size).toByteArray()
+            currentAuthState = AuthState.KEY_RECEIVED
+            notifyUI("Step 2: Key Received")
+            return Utils.SELECT_OK_SW
+        }
+
+        // Step 3: Signature & Final Auth
+        val cmdSig = CryptoUtils.CMD_AUTH_SEND_SIG
+        if (commandApdu.take(cmdSig.size).toByteArray().contentEquals(cmdSig)) {
+            if (currentAuthState != AuthState.KEY_RECEIVED) return Utils.UNKNOWN_CMD_SW
+
+            val signature = commandApdu.drop(cmdSig.size).toByteArray()
+            val encryptedKey = encryptedKeyBuffer ?: return Utils.UNKNOWN_CMD_SW
+
+            val verified = CryptoUtils.rsaVerify(encryptedKey, signature, CryptoUtils.getOtherPublicKey())
+            if (verified) {
+                sessionKey = CryptoUtils.rsaDecrypt(encryptedKey, CryptoUtils.getMyPrivateKey())
+                currentAuthState = AuthState.AUTHENTICATED
+
+                // CRITICAL FIX 2: Load the data and enforce reset at the moment of authentication
+                this.transferMode = sharedTransferMode
+                this.textContent = sharedTextContent
+                this.fileQueue = sharedFileQueue.toMutableList()
+                this.currentFileIndex = 0
+                this.fileChunkOffset = 0
+
+                notifyUI("Step 3: Authenticated Securely")
+
+                val ack = CryptoUtils.xorEncryptDecrypt("AUTH_OK".toByteArray(), sessionKey!!)
+                return Utils.concatArrays(ack, Utils.SELECT_OK_SW)
+            }
+            notifyUI("Authentication Failed")
+            return Utils.UNKNOWN_CMD_SW
+        }
+
+        // Only process data if Authenticated
+        if (currentAuthState != AuthState.AUTHENTICATED) return Utils.FILE_NOT_READY_SW
+
+        // Sync state and handle transfer
+        transferMode = sharedTransferMode
+        textContent = sharedTextContent
+
+        val rawResponse = when (transferMode) {
             "TEXT" -> handleTextTransfer(commandApdu)
             "FILE" -> handleFileTransfer(commandApdu)
             "MULTI_FILE" -> handleAppendedFileTransfer(commandApdu)
-            else -> {
-                Log.w("HCE_SERVICE", "Received command but no data is ready (mode is NONE).")
-                Utils.FILE_NOT_READY_SW
-            }
+            else -> Utils.FILE_NOT_READY_SW
+        }
+
+        // Encrypt Data Responses
+        return if (rawResponse.size > 2) {
+            val data = rawResponse.copyOfRange(0, rawResponse.size - 2)
+            val encryptedData = CryptoUtils.xorEncryptDecrypt(data, sessionKey!!)
+            Utils.concatArrays(encryptedData, Utils.SELECT_OK_SW)
+        } else {
+            rawResponse
         }
     }
+
     private fun handleTextTransfer(commandApdu: ByteArray): ByteArray {
         if (!Arrays.equals(commandApdu, Utils.GET_FILE_INFO_COMMAND)) {
             return Utils.UNKNOWN_CMD_SW
@@ -174,13 +235,13 @@ class MyHostApduService : HostApduService() {
     }
 
     override fun onDeactivated(reason: Int) {
-        Log.d("HCE_SERVICE", "Deactivated (reason: $reason).")
-        if (reason == DEACTIVATION_LINK_LOSS) {
-            Log.d("HCE_SERVICE", "Link loss - keeping data for reconnection")
-        } else {
-            Log.d("HCE_SERVICE", "Major deactivation - resetting state")
-            resetTransferState()
-        }
+        currentAuthState = AuthState.IDLE
+        sessionKey = null
+    }
+    private fun notifyUI(step: String) {
+        val intent = Intent("NFC_AUTH_STEP")
+        intent.putExtra("step_message", step)
+        sendBroadcast(intent)
     }
 
 }
