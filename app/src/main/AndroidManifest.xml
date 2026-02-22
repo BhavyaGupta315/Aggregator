@@ -82,7 +82,7 @@
         <!-- File Provider -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.example.zapshare.provider"
+            android:authorities="com.example.aggregator.provider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

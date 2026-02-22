@@ -37,7 +37,7 @@ interface HealthApiService {
 }
 class SyncRepository {
     private val BASE_URL = "https://nursing-backend-vp5o.onrender.com"
-    private lateinit var apiService: HealthApiService
+    private var apiService: HealthApiService
 
     init {
         val logging = HttpLoggingInterceptor().apply {
