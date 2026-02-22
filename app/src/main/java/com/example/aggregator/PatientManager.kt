@@ -45,7 +45,4 @@ class PatientManager(private val context : Context) {
         )
     }
 
-    fun clearPatient() {
-        prefs.edit().clear().apply()
-    }
 }
