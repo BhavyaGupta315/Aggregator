@@ -81,7 +81,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         syncButton.setOnClickListener {
-            startActivity(Intent(this, SyncActivity::class.java))
+            val pName = intent.getStringExtra("patient_name") ?: "Unknown"
+            startActivity(Intent(this, SyncActivity::class.java).apply {
+                putExtra("patient_name", pName)
+            })
         }
 
         backButton.setOnClickListener {

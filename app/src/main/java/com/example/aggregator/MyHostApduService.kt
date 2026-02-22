@@ -23,6 +23,7 @@ class MyHostApduService : HostApduService() {
     private var fileQueue: MutableList<FileData> = mutableListOf()
     private var currentFileIndex: Int = 0
 
+
     companion object {
         private var sharedTransferMode = "NONE"
         private var sharedTextContent: String? = null
@@ -36,7 +37,23 @@ class MyHostApduService : HostApduService() {
             sharedFileContent = null
             sharedFileQueue.clear()
         }
-        // --- Class-level static references for sending operations ---
+
+        // Added for SyncActivity text messaging
+        fun setTextForTransfer(text: String) {
+            setSingleTextForTransfer(text)
+        }
+
+        // Added for SyncActivity single file transfer
+        fun setFileForTransfer(content: ByteArray, mimeType: String) {
+            sharedTransferMode = "FILE"
+            sharedFileContent = content
+            sharedFileMimeType = mimeType
+            sharedTextContent = null
+            sharedFileQueue.clear()
+
+            Log.d("HCE_SERVICE", "Service armed for SINGLE FILE transfer. Size: ${content.size}")
+        }
+
         fun setMultipleFilesForTransfer(files: List<FileData>) {
             sharedTransferMode = "MULTI_FILE"
             sharedFileQueue.clear()
@@ -50,6 +67,7 @@ class MyHostApduService : HostApduService() {
                 Log.d("HCE_SERVICE", "Sending file: ${files[0].name}")
             }
         }
+
         fun resetTransferState() {
             sharedTransferMode = "NONE"
             sharedTextContent = null
@@ -98,6 +116,11 @@ class MyHostApduService : HostApduService() {
                 // CRITICAL FIX 2: Load the data and enforce reset at the moment of authentication
                 this.transferMode = sharedTransferMode
                 this.textContent = sharedTextContent
+
+                // THESE TWO LINES WERE MISSING:
+                this.fileContent = sharedFileContent
+                this.fileMimeType = sharedFileMimeType
+
                 this.fileQueue = sharedFileQueue.toMutableList()
                 this.currentFileIndex = 0
                 this.fileChunkOffset = 0
