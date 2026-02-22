@@ -1,3 +1,16 @@
 <resources>
     <string name="app_name">Aggregator</string>
+    <string name="servicedesc">Aggregator HCE Service</string>
+    <string name="aiddescription">Aggregator File and Text Transfer</string>
+    <string name="file_name">File Name</string>
+    <string name="waiting">Waiting...</string>
+    <string name="tap_nursing_device">Tap Nursing Device</string>
+    <string name="preparing_files">Preparing files...</string>
+    <string name="size">Size</string>
+    <string name="waiting_to_sync">Waiting to sync...</string>
+    <string name="file_icon">File Icon</string>
+    <string name="details">Details</string>
+    <string name="no_files_or_folders_n_nuse_update_to_receive_files">No files or folders\n\nUse \'Update\' to receive files</string>
+    <string name="sync">Sync</string>
+    <string name="update">Update</string>
 </resources>
