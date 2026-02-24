@@ -55,31 +55,36 @@ class SyncRepository {
 
         apiService = retrofit.create(HealthApiService::class.java)
     }
-
-    suspend fun syncLatestReport(context: Context): Result<String> = withContext(Dispatchers.IO){
+    suspend fun syncLatestReport(context: Context): Result<String> = withContext(Dispatchers.IO) {
         try {
             val appFilesDir = context.getExternalFilesDir(null) ?: return@withContext Result.failure(Exception("No storage"))
             val nursingDir = File(appFilesDir, "NursingDevice")
             if (!nursingDir.exists()) return@withContext Result.failure(Exception("No NursingDevice folder"))
 
-            // Find the latest date folder
-            val latestDateFolder = nursingDir.listFiles()
-                ?.filter { it.isDirectory }
-                ?.maxByOrNull { it.name } ?: return@withContext Result.failure(Exception("No date folders"))
+            // Search across ALL date folders to find the single most recently modified .txt file
+            val lastUpdatedFile = nursingDir.listFiles()
+                ?.filter { it.isDirectory }                // Look into all date folders (e.g., 23-02, 24-02)
+                ?.flatMap { it.listFiles()?.toList() ?: emptyList() } // Get all files inside them
+                ?.filter { it.isFile && it.extension == "txt" }       // Only look for text files
+                ?.maxByOrNull { it.lastModified() }         // Find the one that was edited most recently
 
-            val masterFile = File(latestDateFolder, "aggregated_reports.txt")
-            if (!masterFile.exists()) return@withContext Result.failure(Exception("No aggregated_reports.txt"))
+            if (lastUpdatedFile == null) {
+                return@withContext Result.failure(Exception("No report files found in any folder"))
+            }
 
-            val date = latestDateFolder.name
-            val content = masterFile.readText()
+            // Use the parent folder's name as the date for the database record
+            val date = lastUpdatedFile.parentFile?.name ?: "Unknown Date"
+            val content = lastUpdatedFile.readText()
+            val fileName = lastUpdatedFile.name
+
             val deviceId = Secure.getString(context.contentResolver, Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
             val receivedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).format(Date())
 
-            val request = ReportRequest(deviceId, date, "aggregated_reports.txt", content, receivedAt)
+            val request = ReportRequest(deviceId, date, fileName, content, receivedAt)
             val response = apiService.syncReport(request)
 
             if (response.success) {
-                Result.success("Synced ${date}: ${response.message}")
+                Result.success("Synced ${fileName} from ${date}: ${response.message}")
             } else {
                 Result.failure(Exception(response.message ?: "Sync failed"))
             }
