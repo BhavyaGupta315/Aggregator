@@ -8,67 +8,95 @@
     android:background="@color/med_surface"
     tools:context=".MainActivity">
 
-    <Button
-        android:id="@+id/sharePatientBtn"
+    <!-- Top Action Bar -->
+    <LinearLayout
+        android:id="@+id/topActionsBar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Share Patient Details"
-        android:layout_margin="8dp"
-        android:padding="10dp"
+        android:orientation="vertical"
+        android:background="@color/med_surface_header"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="32dp"
+        android:paddingBottom="8dp"
+        android:elevation="3dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <Button
-        android:id="@+id/SyncHealthDbButton"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Sync with Health Database"
-        android:layout_margin="8dp"
-        android:padding="20dp"
-        app:layout_constraintTop_toBottomOf="@+id/sharePatientBtn"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        <Button
+            android:id="@+id/sharePatientBtn"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Share Patient Details"
+            android:textAllCaps="false"
+            android:textSize="14sp"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/med_green_primary"
+            android:layout_marginBottom="8dp"/>
 
-    <Button
-        android:id="@+id/SenderButton"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/sync"
-        app:layout_constraintTop_toBottomOf="@+id/SyncHealthDbButton"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toLeftOf="@+id/ReceiverButton"
-        android:layout_margin="8dp"
-        android:padding="20dp" />
+        <Button
+            android:id="@+id/SyncHealthDbButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Sync with Health Database"
+            android:textAllCaps="false"
+            android:textSize="14sp"
+            android:textColor="@color/med_green_primary"
+            android:backgroundTint="@color/med_green_light"
+            android:layout_marginBottom="8dp"/>
 
-    <Button
-        android:id="@+id/ReceiverButton"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/update"
-        app:layout_constraintTop_toBottomOf="@+id/SyncHealthDbButton"
-        app:layout_constraintLeft_toRightOf="@+id/SenderButton"
-        app:layout_constraintRight_toRightOf="parent"
-        android:layout_margin="8dp"
-        android:padding="20dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
 
+            <Button
+                android:id="@+id/SenderButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/sync"
+                android:textAllCaps="false"
+                android:textSize="14sp"
+                android:textColor="@color/white"
+                android:backgroundTint="@color/med_green_primary"
+                android:layout_marginEnd="6dp"/>
+
+            <Button
+                android:id="@+id/ReceiverButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/update"
+                android:textAllCaps="false"
+                android:textSize="14sp"
+                android:textColor="@color/white"
+                android:backgroundTint="@color/med_green_primary"
+                android:layout_marginStart="6dp"/>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- File Explorer Header -->
     <LinearLayout
         android:id="@+id/explorerHeader"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@color/white"
+        android:background="@color/med_surface_header"
         android:elevation="2dp"
-        android:padding="16dp"
-        app:layout_constraintTop_toBottomOf="@+id/SenderButton"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp"
+        app:layout_constraintTop_toBottomOf="@+id/topActionsBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="8dp">
 
         <ImageButton
             android:id="@+id/backButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:src="@android:drawable/ic_menu_revert"
             android:background="?attr/selectableItemBackground"
             android:contentDescription="Back"
@@ -80,10 +108,10 @@
             android:textStyle="bold"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📁 Files:"
-            android:textSize="16sp"
+            android:text="Files:"
+            android:textSize="15sp"
             android:layout_gravity="center_vertical"
-            android:layout_marginStart="8dp"/>
+            android:layout_marginStart="4dp"/>
 
         <TextView
             android:id="@+id/currentPathText"
@@ -91,46 +119,55 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="/"
-            android:textSize="14sp"
-            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:textColor="@color/med_text_secondary"
             android:layout_gravity="center_vertical"
-            android:layout_marginStart="4dp"
+            android:layout_marginStart="8dp"
             android:singleLine="true"
             android:ellipsize="start"/>
     </LinearLayout>
 
+    <!-- Divider -->
     <View
         android:id="@+id/divider"
         android:layout_width="0dp"
         android:layout_height="1dp"
-        android:background="@android:color/darker_gray"
+        android:background="@color/med_divider"
         app:layout_constraintTop_toBottomOf="@+id/explorerHeader"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"/>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- File List -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/fileRecyclerView"
-        android:layout_margin="12dp"
-        android:background="@drawable/medical_card_bg"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/medical_card_bg"
+        android:clipToPadding="false"
+        android:padding="4dp"
         app:layout_constraintTop_toBottomOf="@+id/divider"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"/>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- Empty State -->
     <TextView
         android:id="@+id/emptyStateText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/no_files_or_folders_n_nuse_update_to_receive_files"
-        android:textSize="16sp"
-        android:textColor="@android:color/secondary_text_dark"
+        android:textSize="15sp"
+        android:lineSpacingMultiplier="1.4"
+        android:textColor="@color/med_text_secondary"
         android:textAlignment="center"
+        android:paddingHorizontal="32dp"
         android:visibility="gone"
         app:layout_constraintTop_toTopOf="@+id/fileRecyclerView"
         app:layout_constraintBottom_toBottomOf="@+id/fileRecyclerView"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"/>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

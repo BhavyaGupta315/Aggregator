@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand stays the same but slightly lighter for dark bg -->
+    <color name="med_green_primary">#3AA892</color>
+    <color name="med_green_light">#1B3630</color>
+    <color name="med_green_dark">#4DBFAC</color>
+
+    <!-- Dark mode surfaces -->
+    <color name="med_surface">#121817</color>
+    <color name="med_surface_card">#1E2726</color>
+    <color name="med_surface_input">#252E2C</color>
+    <color name="med_surface_header">#1A2422</color>
+    <color name="med_surface_section">#1E2726</color>
+
+    <!-- Dark mode text -->
+    <color name="med_text_primary">#E8EDEB</color>
+    <color name="med_text_secondary">#9DB8B2</color>
+    <color name="med_text_hint">#5F7A74</color>
+    <color name="med_text_on_primary">#FFFFFF</color>
+
+    <!-- Dark mode borders / dividers -->
+    <color name="med_border">#2E3D3A</color>
+    <color name="med_divider">#253330</color>
+
+    <!-- Semantic -->
+    <color name="med_nfc_bg">#121817</color>
+    <color name="med_nfc_card">#1E2726</color>
+    <color name="med_nfc_text_dim">#7A9E97</color>
+    <color name="med_status_blue">#4A9ECB</color>
+</resources>
+
