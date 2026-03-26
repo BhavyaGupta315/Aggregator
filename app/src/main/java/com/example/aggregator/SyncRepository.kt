@@ -7,15 +7,19 @@ import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
 import java.io.File
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 data class ReportRequest(
     @SerializedName("deviceId") val deviceId: String,
@@ -35,15 +39,32 @@ interface HealthApiService {
     @POST("api/reports")
     suspend fun syncReport(@Body request: ReportRequest): ReportResponse
 }
+
+enum class ServerStatus {
+    AWAKE,
+    WAKING_UP,
+    NO_INTERNET,
+    SERVER_DOWN
+}
+
 class SyncRepository {
     private val BASE_URL = "https://nursing-backend-vp5o.onrender.com"
     private var apiService: HealthApiService
+
+    // Short-timeout client just for health checks
+    private val pingClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
 
     init {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
         val client = OkHttpClient.Builder()
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()
 
@@ -55,24 +76,58 @@ class SyncRepository {
 
         apiService = retrofit.create(HealthApiService::class.java)
     }
+
+    /**
+     * Quick ping to determine current server state.
+     * Uses a short timeout so we can differentiate:
+     * - AWAKE: server responds (any HTTP code)
+     * - WAKING_UP: SocketTimeoutException (Render is spinning up the container)
+     * - NO_INTERNET: UnknownHostException / DNS failure
+     * - SERVER_DOWN: connection refused or HTTP 502/503 from Render's proxy
+     */
+    suspend fun checkServerStatus(): ServerStatus = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("${BASE_URL}/")
+                .head()
+                .build()
+            val response = pingClient.newCall(request).execute()
+            val code = response.code
+            response.close()
+
+            when {
+                code in 200..499 -> ServerStatus.AWAKE
+                code == 502 || code == 503 -> ServerStatus.WAKING_UP
+                else -> ServerStatus.SERVER_DOWN
+            }
+        } catch (e: SocketTimeoutException) {
+            ServerStatus.WAKING_UP
+        } catch (e: UnknownHostException) {
+            ServerStatus.NO_INTERNET
+        } catch (e: java.net.ConnectException) {
+            ServerStatus.SERVER_DOWN
+        } catch (e: Exception) {
+            Log.w("SyncRepository", "Ping failed: ${e.javaClass.simpleName}: ${e.message}")
+            ServerStatus.SERVER_DOWN
+        }
+    }
+
     suspend fun syncLatestReport(context: Context): Result<String> = withContext(Dispatchers.IO) {
         try {
             val appFilesDir = context.getExternalFilesDir(null) ?: return@withContext Result.failure(Exception("No storage"))
             val nursingDir = File(appFilesDir, "NursingDevice")
             if (!nursingDir.exists()) return@withContext Result.failure(Exception("No NursingDevice folder"))
 
-            // Search across ALL date folders to find the single most recently modified .txt file
             val lastUpdatedFile = nursingDir.listFiles()
-                ?.filter { it.isDirectory }                // Look into all date folders (e.g., 23-02, 24-02)
-                ?.flatMap { it.listFiles()?.toList() ?: emptyList() } // Get all files inside them
-                ?.filter { it.isFile && it.extension == "txt" }       // Only look for text files
-                ?.maxByOrNull { it.lastModified() }         // Find the one that was edited most recently
+                ?.filter { it.isDirectory }
+                ?.flatMap { it.listFiles()?.toList() ?: emptyList() }
+                ?.filter { it.isFile && it.extension == "txt" }
+                ?.maxByOrNull { it.lastModified() }
 
             if (lastUpdatedFile == null) {
                 return@withContext Result.failure(Exception("No report files found in any folder"))
             }
 
-            // Use the parent folder's name as the date for the database record
             val date = lastUpdatedFile.parentFile?.name ?: "Unknown Date"
             val content = lastUpdatedFile.readText()
             val fileName = lastUpdatedFile.name

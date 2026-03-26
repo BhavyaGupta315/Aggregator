@@ -8,16 +8,12 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,7 +27,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rootDirectory: File
     private lateinit var currentDirectory: File
     private val navigationStack = mutableListOf<File>()
-    private val syncRepository = SyncRepository()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,20 +40,9 @@ class MainActivity : AppCompatActivity() {
         val syncButton = findViewById<Button>(R.id.SenderButton)
         val updateButton = findViewById<Button>(R.id.ReceiverButton)
 
-        // Find the sync button and set click listener
+        // Cloud sync button — opens dedicated sync screen
         findViewById<Button>(R.id.SyncHealthDbButton)?.setOnClickListener {
-            CoroutineScope(Dispatchers.Main).launch {
-
-                val result = syncRepository.syncLatestReport(this@MainActivity)
-                result.fold(
-                    onSuccess = { message ->
-                        Toast.makeText(this@MainActivity, " $message", Toast.LENGTH_LONG).show()
-                    },
-                    onFailure = { error ->
-                        Toast.makeText(this@MainActivity, " ${error.message}", Toast.LENGTH_LONG).show()
-                    }
-                )
-            }
+            startActivity(Intent(this, SyncCloudActivity::class.java))
         }
 
         sharePatientBtn.setOnClickListener {
@@ -185,4 +169,3 @@ class MainActivity : AppCompatActivity() {
         fileRecyclerView.scrollToPosition(0)
     }
 }
-
