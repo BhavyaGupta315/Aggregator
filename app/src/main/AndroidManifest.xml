@@ -62,6 +62,12 @@
             android:name=".SyncActivity"
             android:exported="false" />
 
+        <!-- Cloud Sync Activity -->
+        <activity
+            android:name=".SyncCloudActivity"
+            android:exported="false"
+            android:label="Sync to Cloud" />
+
         <!-- NFC Host APDU Service -->
         <service
             android:name=".MyHostApduService"
