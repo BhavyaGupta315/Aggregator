@@ -13,7 +13,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
@@ -133,17 +132,8 @@ class UpdateActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     private fun saveReceivedFile(content: ByteArray) {
         try {
-            val appFilesDir = getExternalFilesDir(null) ?: throw IOException("Storage unavailable")
-            val rootDirectory = File(appFilesDir, "NursingDevice")
-            if (!rootDirectory.exists()) rootDirectory.mkdirs()
-
-            // 1. Map to Folder by Date (e.g. "2026-02-22")
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val dateString = dateFormat.format(Date())
-            val todayDir = File(rootDirectory, dateString)
-            if (!todayDir.exists()) todayDir.mkdirs()
-
-            // 2. Extract Patient Name
             val textContent = String(content, Charsets.UTF_8)
             var patientName = "Unknown"
 
@@ -152,25 +142,37 @@ class UpdateActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                 patientName = it.substringAfter("Patient Name:").trim().replace(" ", "_")
             }
 
-            // 3. Build File Name format: patientname_date.txt
+            val patient = PatientManager(this).getCurrentPatient()
             val fileName = "${patientName}_${dateString}.txt"
-            val newFile = File(todayDir, fileName)
-
-            // 4. Create a timestamp header so appended records are readable
             val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             val timeString = timeFormat.format(Date())
+            val reportDao = AggregatorDatabase.getInstance(this).patientReportDao()
+            val existing = patient?.let { reportDao.getReportForDay(it.id, dateString) }
 
-            val appendHeader = if (newFile.exists()) {
+            val appendHeader = if (existing != null && existing.content.isNotBlank()) {
                 "\n\n=================================\nUpdate Received at: $timeString\n=================================\n\n"
             } else {
                 "Initial Record Received at: $timeString\n=================================\n\n"
             }
-
-            // 5. Write to disk using Append Mode (FileOutputStream parameter 'true')
-            FileOutputStream(newFile, true).use { fos ->
-                fos.write(appendHeader.toByteArray(Charsets.UTF_8))
-                fos.write(content)
+            val mergedContent = buildString {
+                if (existing != null && existing.content.isNotBlank()) {
+                    append(existing.content)
+                }
+                append(appendHeader)
+                append(textContent)
             }
+
+            reportDao.upsert(
+                PatientReportEntity(
+                    id = existing?.id ?: 0,
+                    patientId = patient?.id ?: "unknown",
+                    patientName = patient?.name ?: patientName.replace("_", " "),
+                    reportDate = dateString,
+                    content = mergedContent,
+                    updatedAt = System.currentTimeMillis(),
+                    source = "NFC"
+                )
+            )
 
             runOnUiThread {
                 statusText.text = "Update Saved Successfully!"

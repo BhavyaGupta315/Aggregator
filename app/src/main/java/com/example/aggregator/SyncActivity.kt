@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -48,18 +47,18 @@ class SyncActivity : AppCompatActivity() {
 
     private fun prepareTodayRecord(patientName: String) {
         try {
-            val appFilesDir = getExternalFilesDir(null)
-            val rootDirectory = File(appFilesDir, "NursingDevice")
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val dateString = dateFormat.format(Date())
-            val todayDir = File(rootDirectory, dateString)
+            val currentPatient = PatientManager(this).getCurrentPatient()
+            val fileName = "${patientName.replace(" ", "_")}_${dateString}.txt"
+            val report = currentPatient?.let {
+                AggregatorDatabase.getInstance(this)
+                    .patientReportDao()
+                    .getReportForDay(it.id, dateString)
+            }
 
-            val cleanName = patientName.replace(" ", "_")
-            val fileName = "${cleanName}_${dateString}.txt"
-            val file = File(todayDir, fileName)
-
-            if (file.exists()) {
-                val fileContent = file.readBytes()
+            if (report != null) {
+                val fileContent = report.content.toByteArray(Charsets.UTF_8)
                 MyHostApduService.setFileForTransfer(fileContent, "text/plain")
                 statusText.text = "Ready to Sync"
                 fileNameText.text = "File loaded: $fileName\nSize: ${fileContent.size} bytes"

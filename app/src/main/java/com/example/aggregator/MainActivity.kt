@@ -1,9 +1,7 @@
 package com.example.aggregator
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.ImageButton
@@ -11,26 +9,19 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
-
 class MainActivity : AppCompatActivity() {
 
     private lateinit var fileRecyclerView: RecyclerView
     private lateinit var currentPathText: TextView
     private lateinit var backButton: ImageButton
     private lateinit var fileListAdapter: FileListAdapter
-
-    private val APP_DIRECTORY = "NursingDevice"
-    private val PERMISSION_REQUEST_CODE = 102
-    private lateinit var rootDirectory: File
-    private lateinit var currentDirectory: File
-    private val navigationStack = mutableListOf<File>()
+    private lateinit var reportDao: PatientReportDao
+    private var selectedDate: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        reportDao = AggregatorDatabase.getInstance(this).patientReportDao()
 
         val patientName = intent.getStringExtra("patient_name") ?: "Patient"
         val directoryHeader = findViewById<TextView>(R.id.directoryHeader)
@@ -55,10 +46,7 @@ class MainActivity : AppCompatActivity() {
         fileRecyclerView = findViewById(R.id.fileRecyclerView)
         currentPathText = findViewById(R.id.currentPathText)
         backButton = findViewById(R.id.backButton)
-
-        // ⚠️ SKIP PERMISSION FOR TESTING
-        Log.d("MainActivity", "⚠️ Skipping permission check - testing mode")
-        initializeFileExplorer()
+        initializeBrowser()
 
         updateButton.setOnClickListener {
             startActivity(Intent(this, UpdateActivity::class.java))
@@ -82,99 +70,56 @@ class MainActivity : AppCompatActivity() {
         if (::fileListAdapter.isInitialized) loadCurrentDirectory()
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            PERMISSION_REQUEST_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    Log.d("MainActivity", "✅ Permission granted")
-                    initializeFileExplorer()
-                } else {
-                    currentPathText.text = "❌ Storage permission required"
-                    Log.w("MainActivity", "Permission denied")
-                }
-            }
-        }
-    }
-    private fun initializeFileExplorer() {
-        val appFilesDir = getExternalFilesDir(null)
-        if (appFilesDir == null) {
-            Log.e("MainActivity", "Storage not available")
-            currentPathText.text = "Storage not available"
-            return
-        }
-
-        rootDirectory = File(appFilesDir, APP_DIRECTORY)
-        if (!rootDirectory.exists()) rootDirectory.mkdirs()
-        currentDirectory = rootDirectory
-
-        createTodayFolderIfNeeded()
-
+    private fun initializeBrowser() {
         fileRecyclerView.layoutManager = LinearLayoutManager(this)
         fileListAdapter = FileListAdapter(emptyList()) { folder ->
-            navigateToFolder(folder)
+            selectedDate = folder.date
+            loadCurrentDirectory()
         }
         fileRecyclerView.adapter = fileListAdapter
 
         loadCurrentDirectory()
     }
 
-    private fun createTodayFolderIfNeeded() {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val todayFolder = dateFormat.format(Date())
-        val todayDir = File(rootDirectory, todayFolder)
-        if (!todayDir.exists()) {
-            todayDir.mkdirs()
-            Log.d("MainActivity", "Created today's folder: $todayFolder")
-        }
-    }
-
-    private fun navigateToFolder(folder: File) {
-        if (folder.isDirectory) {
-            navigationStack.add(currentDirectory)
-            currentDirectory = folder
-            loadCurrentDirectory()
-        }
-    }
-
     private fun navigateBack() {
-        if (navigationStack.isNotEmpty()) {
-            currentDirectory = navigationStack.removeAt(navigationStack.size - 1)
-            loadCurrentDirectory()
-        } else if (currentDirectory != rootDirectory) {
-            currentDirectory = rootDirectory
+        if (selectedDate != null) {
+            selectedDate = null
             loadCurrentDirectory()
         }
     }
 
     private fun loadCurrentDirectory() {
-        val relativePath = currentDirectory.absolutePath.removePrefix(rootDirectory.absolutePath)
-        currentPathText.text = if (relativePath.isEmpty()) "/" else relativePath
-
-        backButton.visibility = if (currentDirectory == rootDirectory && navigationStack.isEmpty()) {
-            View.GONE
-        } else {
-            View.VISIBLE
+        val currentPatient = PatientManager(this).getCurrentPatient()
+        if (currentPatient == null) {
+            currentPathText.text = "/"
+            backButton.visibility = View.GONE
+            fileListAdapter.updateFiles(emptyList())
+            return
         }
 
-        // Get current patient name for filtering (null = show all)
-        val patientFilter = PatientManager(this).getCurrentPatient()
-            ?.name?.replace(" ", "_")?.lowercase()
-
-        val items = currentDirectory.listFiles()
-            ?.sortedWith(compareBy<File> { !it.isDirectory }.thenByDescending { it.name })
-            ?.filter { file ->
-                // Always show directories; filter .txt files by patient name
-                file.isDirectory || patientFilter == null ||
-                    file.name.lowercase().contains(patientFilter)
+        if (selectedDate == null) {
+            currentPathText.text = "/"
+            backButton.visibility = View.GONE
+            val items = reportDao.getAvailableDates(currentPatient.id).map { date ->
+                BrowserItem.DateFolder(
+                    date = date,
+                    count = reportDao.getReportsForDay(currentPatient.id, date).size
+                )
             }
-            ?: emptyList()
-
-        fileListAdapter.updateFiles(items)
+            fileListAdapter.updateFiles(items)
+        } else {
+            currentPathText.text = "/$selectedDate"
+            backButton.visibility = View.VISIBLE
+            val items = reportDao.getReportsForDay(currentPatient.id, selectedDate!!).map { report ->
+                BrowserItem.ReportFile(
+                    reportId = report.id,
+                    fileName = "${report.patientName.replace(" ", "_")}_${report.reportDate}.txt",
+                    content = report.content,
+                    updatedAt = report.updatedAt
+                )
+            }
+            fileListAdapter.updateFiles(items)
+        }
         fileRecyclerView.scrollToPosition(0)
     }
 }

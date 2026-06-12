@@ -265,19 +265,10 @@ class PatientRepository {
         patient: PatientCloudData,
         records: List<PatientRecordData>
     ): Int {
-        val appFilesDir = context.getExternalFilesDir(null)
-            ?: throw IllegalStateException("Storage unavailable")
-        val rootDirectory = File(appFilesDir, "NursingDevice")
-        if (!rootDirectory.exists()) rootDirectory.mkdirs()
-
-        val safePatientName = patient.name.replace(" ", "_").ifBlank { patient.patientId }
+        val reportDao = AggregatorDatabase.getInstance(context).patientReportDao()
         val groupedByDate = records.groupBy { it.date ?: "undated" }
 
         groupedByDate.forEach { (date, dateRecords) ->
-            val dayFolder = File(rootDirectory, date)
-            if (!dayFolder.exists()) dayFolder.mkdirs()
-
-            val targetFile = File(dayFolder, "${safePatientName}_${date}.txt")
             val content = dateRecords
                 .sortedBy { it.time ?: "" }
                 .joinToString(
@@ -285,8 +276,18 @@ class PatientRepository {
                 ) { record ->
                     buildRecordBlock(patient, record)
                 }
-
-            targetFile.writeText(content, Charsets.UTF_8)
+            val existing = reportDao.getReportForDay(patient.patientId, date)
+            reportDao.upsert(
+                PatientReportEntity(
+                    id = existing?.id ?: 0,
+                    patientId = patient.patientId,
+                    patientName = patient.name,
+                    reportDate = date,
+                    content = content,
+                    updatedAt = System.currentTimeMillis(),
+                    source = "CLOUD"
+                )
+            )
         }
 
         return records.size
