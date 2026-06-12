@@ -65,6 +65,20 @@
                 android:layout_marginBottom="16dp"/>
 
             <EditText
+                android:id="@+id/patientIdInput"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="Patient ID (for login)"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:background="@drawable/medical_input_bg"
+                android:inputType="text"
+                android:textColor="@color/med_text_primary"
+                android:textColorHint="@color/med_text_hint"
+                android:textSize="15sp"
+                android:layout_marginBottom="12dp"/>
+
+            <EditText
                 android:id="@+id/patientName"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"

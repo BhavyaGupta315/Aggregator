@@ -70,7 +70,7 @@ enum class ServerStatus {
 }
 
 class SyncRepository {
-    private val BASE_URL = "https://nursing-backend-vp5o.onrender.com"
+    private val BASE_URL = "https://nfc-backend-ostp.onrender.com"
     private var apiService: HealthApiService
 
     // Short-timeout client just for health checks

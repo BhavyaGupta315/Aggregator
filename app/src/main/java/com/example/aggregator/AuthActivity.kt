@@ -12,15 +12,21 @@ import kotlinx.coroutines.launch
 class AuthActivity : AppCompatActivity() {
     private lateinit var patientManager: PatientManager
     private val patientRepo = PatientRepository()
+    private lateinit var patientIdInput: EditText
+    private lateinit var registerButton: Button
+    private lateinit var loginButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_auth)
 
         patientManager = PatientManager(this)
+        patientIdInput = findViewById(R.id.patientIdInput)
+        registerButton = findViewById(R.id.registerBtn)
+        loginButton = findViewById(R.id.loginBtn)
 
-        findViewById<Button>(R.id.registerBtn).setOnClickListener { handleRegister() }
-        findViewById<Button>(R.id.loginBtn).setOnClickListener { checkCachedPatient() }
+        registerButton.setOnClickListener { handleRegister() }
+        loginButton.setOnClickListener { handleLogin() }
     }
 
     private fun handleRegister() {
@@ -43,25 +49,84 @@ class AuthActivity : AppCompatActivity() {
 
         // Save locally immediately so the app works even if backend is offline
         patientManager.savePatient(patient)
+        patientIdInput.setText(patient.id)
 
         // Register with backend in background — non-blocking
         lifecycleScope.launch {
+            setLoading(true)
             patientRepo.register(patient).fold(
-                onSuccess = { Toast.makeText(this@AuthActivity, "Registered: $name", Toast.LENGTH_SHORT).show() },
-                onFailure = { Toast.makeText(this@AuthActivity, "Saved locally (${it.message})", Toast.LENGTH_LONG).show() }
+                onSuccess = {
+                    Toast.makeText(
+                        this@AuthActivity,
+                        "Registered: $name (Patient ID: ${patient.id})",
+                        Toast.LENGTH_LONG
+                    ).show()
+                },
+                onFailure = {
+                    Toast.makeText(
+                        this@AuthActivity,
+                        "Saved locally (Patient ID: ${patient.id}, ${it.message})",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             )
+            setLoading(false)
         }
 
         goToMain(patient.name)
     }
 
-    private fun checkCachedPatient() {
-        val patient = patientManager.getCurrentPatient()
-        if (patient != null) {
-            Toast.makeText(this, "Welcome back, ${patient.name}!", Toast.LENGTH_SHORT).show()
-            goToMain(patient.name)
-        } else {
-            Toast.makeText(this, "No patient found. Please register first.", Toast.LENGTH_SHORT).show()
+    private fun handleLogin() {
+        val patientId = patientIdInput.text.toString().trim()
+        if (patientId.isEmpty()) {
+            Toast.makeText(this, "Enter your Patient ID", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        setLoading(true)
+        lifecycleScope.launch {
+            patientRepo.login(patientId).fold(
+                onSuccess = { cloudPatient ->
+                    val localPatient = Patient(
+                        id = cloudPatient.patientId,
+                        name = cloudPatient.name,
+                        age = cloudPatient.age ?: 0,
+                        gender = cloudPatient.gender.orEmpty(),
+                        bloodType = cloudPatient.bloodType.orEmpty()
+                    )
+                    patientManager.savePatient(localPatient)
+
+                    val syncMessage = patientRepo.syncPatientRecords(this@AuthActivity, cloudPatient).fold(
+                        onSuccess = { count -> "Fetched $count record(s) from cloud." },
+                        onFailure = { error -> "Logged in, but record download failed: ${error.message}" }
+                    )
+
+                    Toast.makeText(
+                        this@AuthActivity,
+                        "Welcome back, ${cloudPatient.name}! $syncMessage",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    goToMain(cloudPatient.name)
+                },
+                onFailure = { error ->
+                    val cachedPatient = patientManager.getCurrentPatient()
+                    if (cachedPatient?.id == patientId) {
+                        Toast.makeText(
+                            this@AuthActivity,
+                            "Using cached patient data (${error.message})",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        goToMain(cachedPatient.name)
+                    } else {
+                        Toast.makeText(
+                            this@AuthActivity,
+                            error.message ?: "Login failed",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            )
+            setLoading(false)
         }
     }
 
@@ -70,5 +135,10 @@ class AuthActivity : AppCompatActivity() {
             putExtra("patient_name", patientName)
         })
         finish()
+    }
+
+    private fun setLoading(loading: Boolean) {
+        registerButton.isEnabled = !loading
+        loginButton.isEnabled = !loading
     }
 }
