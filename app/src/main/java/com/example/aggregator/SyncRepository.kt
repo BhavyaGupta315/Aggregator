@@ -13,7 +13,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -137,7 +136,12 @@ class SyncRepository {
     //   Medication: <value>
     //   Description: <value>
     //   Updated on: dd/MM/yyyy HH:mm:ss
-    private fun parseToRecordRequest(content: String, date: String, context: Context): RecordRequest? {
+    private fun parseToRecordRequest(
+        content: String,
+        date: String,
+        context: Context,
+        fallbackPatientId: String? = null
+    ): RecordRequest? {
         fun extractLine(prefix: String): String? =
             content.lines().find { it.startsWith(prefix) }?.removePrefix(prefix)?.trim()
 
@@ -155,12 +159,44 @@ class SyncRepository {
         }
 
         // Prefer the registered patient's ID; fall back to name from the file
-        val patientId = PatientManager(context).getCurrentPatient()?.id
+        val patientId = extractLine("Patient ID: ")
+            ?: fallbackPatientId
+            ?: PatientManager(context).getCurrentPatient()?.id
             ?: extractLine("Patient Name: ")
             ?: "unknown"
 
         return RecordRequest(patientId, nurseId, date, time, bp, hr, rr, temp, obs, med)
     }
+
+    private suspend fun syncReportEntity(context: Context, report: PatientReportEntity): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = parseToRecordRequest(
+                    content = report.content,
+                    date = report.reportDate,
+                    context = context,
+                    fallbackPatientId = report.patientId
+                )
+                    ?: return@withContext Result.failure(Exception("Could not parse record — Nurse ID missing"))
+
+                val response = apiService.syncRecord(request)
+                if (response.success) {
+                    AggregatorDatabase.getInstance(context).patientReportDao()
+                        .markSynced(report.id, System.currentTimeMillis())
+                    val fileName = "${report.patientName.replace(" ", "_")}_${report.reportDate}.txt"
+                    Result.success("Synced $fileName: ${response.message}")
+                } else {
+                    AggregatorDatabase.getInstance(context).patientReportDao()
+                        .markSyncFailed(report.id, System.currentTimeMillis(), response.message)
+                    Result.failure(Exception(response.message ?: "Sync failed"))
+                }
+            } catch (e: Exception) {
+                AggregatorDatabase.getInstance(context).patientReportDao()
+                    .markSyncFailed(report.id, System.currentTimeMillis(), e.message)
+                Log.e("SyncRepository", "Record sync error", e)
+                Result.failure(e)
+            }
+        }
 
     // Primary sync method — sends structured fields to /api/records.
     suspend fun syncLatestRecord(context: Context): Result<String> = withContext(Dispatchers.IO) {
@@ -168,25 +204,32 @@ class SyncRepository {
             val latestReport = AggregatorDatabase.getInstance(context).patientReportDao().getLatestReport()
                 ?: return@withContext Result.failure(Exception("No record files found"))
 
-            val date = latestReport.reportDate.ifBlank {
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            }
-            val content = latestReport.content
-
-            val request = parseToRecordRequest(content, date, context)
-                ?: return@withContext Result.failure(Exception("Could not parse record — Nurse ID missing"))
-
-            val response = apiService.syncRecord(request)
-            if (response.success) {
-                val fileName = "${latestReport.patientName.replace(" ", "_")}_${latestReport.reportDate}.txt"
-                Result.success("Synced $fileName: ${response.message}")
-            } else {
-                Result.failure(Exception(response.message ?: "Sync failed"))
-            }
+            syncReportEntity(context, latestReport)
         } catch (e: Exception) {
             Log.e("SyncRepository", "Record sync error", e)
             Result.failure(e)
         }
+    }
+
+    suspend fun syncPendingRecords(context: Context): Result<Int> = withContext(Dispatchers.IO) {
+        val reportDao = AggregatorDatabase.getInstance(context).patientReportDao()
+        val pendingReports = reportDao.getPendingSyncReports()
+        if (pendingReports.isEmpty()) return@withContext Result.success(0)
+
+        var syncedCount = 0
+        pendingReports.forEach { report ->
+            val result = syncReportEntity(context, report)
+            if (result.isSuccess) {
+                syncedCount++
+            } else {
+                return@withContext Result.failure(
+                    result.exceptionOrNull()
+                        ?: Exception("Failed syncing pending report for ${report.patientName} on ${report.reportDate}")
+                )
+            }
+        }
+
+        Result.success(syncedCount)
     }
 
     // Legacy sync — sends raw text blob to /api/reports. Kept so nothing breaks.

@@ -285,7 +285,11 @@ class PatientRepository {
                     reportDate = date,
                     content = content,
                     updatedAt = System.currentTimeMillis(),
-                    source = "CLOUD"
+                    source = "CLOUD",
+                    isSynced = true,
+                    syncedAt = System.currentTimeMillis(),
+                    lastSyncAttemptAt = System.currentTimeMillis(),
+                    syncError = null
                 )
             )
         }

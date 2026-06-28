@@ -170,9 +170,15 @@ class UpdateActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     reportDate = dateString,
                     content = mergedContent,
                     updatedAt = System.currentTimeMillis(),
-                    source = "NFC"
+                    source = "NFC",
+                    isSynced = false,
+                    syncedAt = null,
+                    lastSyncAttemptAt = null,
+                    syncError = null
                 )
             )
+
+            SyncWorkScheduler.enqueueImmediateSync(this)
 
             runOnUiThread {
                 statusText.text = "Update Saved Successfully!"

@@ -19,6 +19,7 @@ class AuthActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_auth)
+        SyncWorkScheduler.schedulePeriodicSync(this)
 
         patientManager = PatientManager(this)
         patientIdInput = findViewById(R.id.patientIdInput)
@@ -49,6 +50,8 @@ class AuthActivity : AppCompatActivity() {
 
         // Save locally immediately so the app works even if backend is offline
         patientManager.savePatient(patient)
+        SyncWorkScheduler.schedulePeriodicSync(this)
+        SyncWorkScheduler.enqueueImmediateSync(this)
         patientIdInput.setText(patient.id)
 
         // Register with backend in background — non-blocking
@@ -106,6 +109,8 @@ class AuthActivity : AppCompatActivity() {
                         "Welcome back, ${cloudPatient.name}! $syncMessage",
                         Toast.LENGTH_LONG
                     ).show()
+                    SyncWorkScheduler.schedulePeriodicSync(this@AuthActivity)
+                    SyncWorkScheduler.enqueueImmediateSync(this@AuthActivity)
                     goToMain(cloudPatient.name)
                 },
                 onFailure = { error ->

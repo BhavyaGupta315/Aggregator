@@ -21,6 +21,7 @@ class SyncCloudActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_sync_cloud)
+        SyncWorkScheduler.schedulePeriodicSync(this)
 
         statusText   = findViewById(R.id.cloudStatusText)
         fileNameText = findViewById(R.id.cloudFileNameText)
@@ -78,12 +79,16 @@ class SyncCloudActivity : AppCompatActivity() {
         statusText.text = "Syncing..."
 
         lifecycleScope.launch {
-            val result = repo.syncLatestRecord(this@SyncCloudActivity)
+            val result = repo.syncPendingRecords(this@SyncCloudActivity)
 
             result.fold(
-                onSuccess = { message ->
+                onSuccess = { count ->
                     statusText.text = "Sync complete"
-                    fileNameText.text = message
+                    fileNameText.text = if (count == 0) {
+                        "No pending local records needed syncing."
+                    } else {
+                        "Synced $count pending record(s) to cloud."
+                    }
                     syncNowButton.isEnabled = true
                 },
                 onFailure = { error ->

@@ -21,6 +21,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        SyncWorkScheduler.schedulePeriodicSync(this)
+        SyncWorkScheduler.enqueueImmediateSync(this)
         reportDao = AggregatorDatabase.getInstance(this).patientReportDao()
 
         val patientName = intent.getStringExtra("patient_name") ?: "Patient"
