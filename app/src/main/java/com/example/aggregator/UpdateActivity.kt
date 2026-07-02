@@ -59,11 +59,19 @@ class UpdateActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             // 1. Handshake
             isoDep.transceive(Utils.SELECT_APD)
 
+            // Phase 3: exchange certificates for the peer public key + our private key.
+            val peerPublicKey = if (CryptoUtils.CERT_AUTH_ENABLED) {
+                NfcAuth.exchangeCerts(isoDep)
+            } else CryptoUtils.getOtherPublicKey()
+            val myPrivateKey = if (CryptoUtils.CERT_AUTH_ENABLED) {
+                CryptoUtils.getSessionPrivateKey() ?: throw IOException("No credential — log in with your PIN.")
+            } else CryptoUtils.getMyPrivateKey()
+
             val sessionKey = CryptoUtils.generateSessionKey()
-            val encryptedKey = CryptoUtils.rsaEncrypt(sessionKey, CryptoUtils.getOtherPublicKey())
+            val encryptedKey = CryptoUtils.rsaEncrypt(sessionKey, peerPublicKey)
             isoDep.transceive(Utils.concatArrays(CryptoUtils.CMD_AUTH_SEND_KEY, encryptedKey))
 
-            val signature = CryptoUtils.rsaSign(encryptedKey, CryptoUtils.getMyPrivateKey())
+            val signature = CryptoUtils.rsaSign(encryptedKey, myPrivateKey)
             val authRes = isoDep.transceive(Utils.concatArrays(CryptoUtils.CMD_AUTH_SEND_SIG, signature))
 
             // 2. Verify Auth
@@ -87,7 +95,8 @@ class UpdateActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     throw IOException("Unsupported transfer mode: $mode")
                 }
             } else {
-                throw IOException("Authentication rejected by sender")
+                throw IOException("Authentication rejected by peer — signature/credential mismatch " +
+                    "(is the other device logged in and registered under the same CA?)")
             }
         } catch (e: Exception) {
             runOnUiThread { statusText.text = "Error: ${e.message}" }

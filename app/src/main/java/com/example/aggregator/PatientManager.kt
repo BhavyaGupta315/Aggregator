@@ -12,8 +12,10 @@ data class Patient(
     val id: String = System.currentTimeMillis().toString()
 )
 
-class PatientManager(context: Context) {
-    private val patientDao = AggregatorDatabase.getInstance(context).patientDao()
+class PatientManager(private val context: Context) {
+    // Lazy: the DB is encrypted and can only open AFTER the PIN is provisioned,
+    // so we must not touch it during construction (AuthActivity builds this in onCreate).
+    private val patientDao get() = AggregatorDatabase.getInstance(context).patientDao()
 
     fun savePatient(patient: Patient) {
         patientDao.clearCurrent()

@@ -5,6 +5,7 @@ import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
 import java.nio.ByteBuffer
+import java.security.PublicKey
 import java.util.Arrays
 import kotlin.compareTo
 import kotlin.math.min
@@ -15,6 +16,8 @@ class MyHostApduService : HostApduService() {
     private var currentAuthState = AuthState.IDLE
     private var sessionKey: ByteArray? = null
     private var encryptedKeyBuffer: ByteArray? = null
+    // Phase 3: peer's public key, extracted from its certificate during cert exchange.
+    private var peerPublicKey: PublicKey? = null
     private var transferMode = "NONE"
     private var textContent: String? = null
     private var fileContent: ByteArray? = null
@@ -82,6 +85,7 @@ class MyHostApduService : HostApduService() {
         if (Arrays.equals(commandApdu, Utils.SELECT_APD)) {
             currentAuthState = AuthState.IDLE
             sessionKey = null
+            peerPublicKey = null
 
             // CRITICAL FIX 1: Reset indices on every new NFC tap
             currentFileIndex = 0
@@ -89,6 +93,27 @@ class MyHostApduService : HostApduService() {
 
             notifyUI("Step 1: Connection Established")
             return Utils.SELECT_OK_SW
+        }
+
+        // Phase 3: certificate exchange (reader -> card). Verify the reader's cert
+        // against our CA, remember its public key, and reply with our own cert.
+        val cmdCert = CryptoUtils.CMD_AUTH_SEND_CERT
+        if (CryptoUtils.CERT_AUTH_ENABLED && commandApdu.size > cmdCert.size &&
+            commandApdu.take(cmdCert.size).toByteArray().contentEquals(cmdCert)) {
+            val myCert = CryptoUtils.getMyCertificatePem()
+            if (myCert == null) {
+                notifyUI("Cert exchange failed: no credential on this device — log in with your PIN")
+                return Utils.UNKNOWN_CMD_SW
+            }
+            try {
+                val peerCertPem = String(commandApdu.drop(cmdCert.size).toByteArray(), Charsets.UTF_8)
+                peerPublicKey = CryptoUtils.verifyPeerCert(peerCertPem)
+            } catch (e: PeerCertException) {
+                notifyUI("Peer cert rejected: ${e.message}")
+                return Utils.UNKNOWN_CMD_SW
+            }
+            notifyUI("Certificates exchanged")
+            return Utils.concatArrays(myCert.toByteArray(Charsets.UTF_8), Utils.SELECT_OK_SW)
         }
 
         // Step 2: Key Exchange
@@ -108,9 +133,21 @@ class MyHostApduService : HostApduService() {
             val signature = commandApdu.drop(cmdSig.size).toByteArray()
             val encryptedKey = encryptedKeyBuffer ?: return Utils.UNKNOWN_CMD_SW
 
-            val verified = CryptoUtils.rsaVerify(encryptedKey, signature, CryptoUtils.getOtherPublicKey())
+            // Phase 3: verify with the peer's cert key + decrypt with our own
+            // credential; fall back to the hardcoded pair when cert-auth is off.
+            val verifyKey = if (CryptoUtils.CERT_AUTH_ENABLED) peerPublicKey else CryptoUtils.getOtherPublicKey()
+            if (verifyKey == null) {
+                notifyUI("Auth Failed: certificate not exchanged")
+                return Utils.UNKNOWN_CMD_SW
+            }
+            val verified = CryptoUtils.rsaVerify(encryptedKey, signature, verifyKey)
             if (verified) {
-                sessionKey = CryptoUtils.rsaDecrypt(encryptedKey, CryptoUtils.getMyPrivateKey())
+                val myPriv = if (CryptoUtils.CERT_AUTH_ENABLED) CryptoUtils.getSessionPrivateKey() else CryptoUtils.getMyPrivateKey()
+                if (myPriv == null) {
+                    notifyUI("Auth Failed: no credential on this device")
+                    return Utils.UNKNOWN_CMD_SW
+                }
+                sessionKey = CryptoUtils.rsaDecrypt(encryptedKey, myPriv)
                 currentAuthState = AuthState.AUTHENTICATED
 
                 // CRITICAL FIX 2: Load the data and enforce reset at the moment of authentication
@@ -260,6 +297,7 @@ class MyHostApduService : HostApduService() {
     override fun onDeactivated(reason: Int) {
         currentAuthState = AuthState.IDLE
         sessionKey = null
+        peerPublicKey = null
     }
     private fun notifyUI(step: String) {
         val intent = Intent("NFC_AUTH_STEP")

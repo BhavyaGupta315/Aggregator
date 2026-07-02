@@ -12,6 +12,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import net.sqlcipher.database.SQLiteDatabase
+import net.sqlcipher.database.SupportFactory
 
 @Entity(tableName = "patients")
 data class PatientEntity(
@@ -43,6 +45,30 @@ data class PatientReportEntity(
     val lastSyncAttemptAt: Long? = null,
     val syncError: String? = null
 )
+
+@Entity(tableName = "credentials")
+data class CredentialEntity(
+    @PrimaryKey val ownerId: String,   // patientId
+    val role: String,                  // "patient"
+    val privateKeyB64: String,         // Kpri, PKCS#8 DER base64
+    val publicKeyB64: String,          // Kpub, SPKI DER base64
+    val certPem: String,
+    val caCertPem: String,
+    val issuedAt: Long = 0,
+    val expiresAt: Long = 0
+)
+
+@Dao
+interface CredentialDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsert(credential: CredentialEntity)
+
+    @Query("SELECT * FROM credentials LIMIT 1")
+    fun getCredential(): CredentialEntity?
+
+    @Query("DELETE FROM credentials")
+    fun clear()
+}
 
 @Dao
 interface PatientDao {
@@ -90,29 +116,54 @@ interface PatientReportDao {
 }
 
 @Database(
-    entities = [PatientEntity::class, PatientReportEntity::class],
-    version = 2,
+    entities = [PatientEntity::class, PatientReportEntity::class, CredentialEntity::class],
+    version = 1,
     exportSchema = false
 )
 abstract class AggregatorDatabase : RoomDatabase() {
     abstract fun patientDao(): PatientDao
     abstract fun patientReportDao(): PatientReportDao
+    abstract fun credentialDao(): CredentialDao
 
     companion object {
         @Volatile
         private var INSTANCE: AggregatorDatabase? = null
 
+        /**
+         * Open the SQLCipher-encrypted DB using the in-memory PIN-derived passphrase.
+         * Throws IllegalStateException if the session is locked (no passphrase) —
+         * callers that may run before unlock (e.g. CloudSyncWorker) must guard this.
+         *
+         * New DB file name ("aggregator_secure.db") intentionally abandons the old
+         * plaintext "aggregator_room.db" — a destructive switch, acceptable for the
+         * prototype (CREDENTIALS_AND_STORAGE_PLAN.md §5.2).
+         */
         fun getInstance(context: Context): AggregatorDatabase =
             INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AggregatorDatabase::class.java,
-                    "aggregator_room.db"
-                )
-                    .fallbackToDestructiveMigration()
-                    .allowMainThreadQueries()
-                    .build()
-                    .also { INSTANCE = it }
+                INSTANCE ?: build(context).also { INSTANCE = it }
             }
+
+        private fun build(context: Context): AggregatorDatabase {
+            val passphrase = AggregatorSession.passphrase
+                ?: throw IllegalStateException("Database is locked — provision the PIN first (login/register).")
+            SQLiteDatabase.loadLibs(context)
+            val factory = SupportFactory(passphrase.copyOf())
+            return Room.databaseBuilder(
+                context.applicationContext,
+                AggregatorDatabase::class.java,
+                "aggregator_secure.db"
+            )
+                .openHelperFactory(factory)
+                .fallbackToDestructiveMigration()
+                .allowMainThreadQueries()
+                .build()
+        }
+
+        fun reset() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
     }
 }

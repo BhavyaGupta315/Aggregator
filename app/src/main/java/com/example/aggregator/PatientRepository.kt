@@ -34,7 +34,15 @@ data class PatientRegisterRequest(
 
 data class PatientRegisterResponse(
     @SerializedName("success") val success: Boolean,
-    @SerializedName("message") val message: String?
+    @SerializedName("message") val message: String?,
+    @SerializedName("credentials") val credentials: Credentials? = null,
+    @SerializedName("credentialError") val credentialError: String? = null
+)
+
+/** Registration result: server message + (on first register) the patient's credentials. */
+data class PatientRegistration(
+    val message: String,
+    val credentials: Credentials?
 )
 
 data class PatientApiResponse(
@@ -99,7 +107,7 @@ class PatientRepository {
             .build()
             .create(PatientApiService::class.java)
 
-    suspend fun register(patient: Patient): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun register(patient: Patient): Result<PatientRegistration> = withContext(Dispatchers.IO) {
         val request = PatientRegisterRequest(
             patientId = patient.id,
             name = patient.name,
@@ -117,8 +125,11 @@ class PatientRepository {
             }
         }
 
-        if (response.success) Result.success(response.message ?: "Registered")
-        else Result.failure(Exception(response.message ?: "Registration failed"))
+        if (response.success) {
+            Result.success(PatientRegistration(response.message ?: "Registered", response.credentials))
+        } else {
+            Result.failure(Exception(response.message ?: "Registration failed"))
+        }
     }
 
     suspend fun login(patientId: String): Result<PatientCloudData> = withContext(Dispatchers.IO) {

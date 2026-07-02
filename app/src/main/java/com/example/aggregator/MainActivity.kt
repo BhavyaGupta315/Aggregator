@@ -21,6 +21,16 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // The DB is encrypted with an in-memory PIN key. If the process was killed
+        // and Android restored us straight into MainActivity, the key is gone —
+        // send the user back to login rather than crashing on a locked DB.
+        if (!AggregatorSession.isUnlocked) {
+            startActivity(Intent(this, AuthActivity::class.java))
+            finish()
+            return
+        }
+
         SyncWorkScheduler.schedulePeriodicSync(this)
         SyncWorkScheduler.enqueueImmediateSync(this)
         reportDao = AggregatorDatabase.getInstance(this).patientReportDao()
