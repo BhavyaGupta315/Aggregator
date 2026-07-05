@@ -7,7 +7,18 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * Process-lifetime scope for background provisioning (backend registration +
+ * credential persistence) that must outlive the AuthActivity — which finishes
+ * itself the moment it navigates to Main. Tied to the app process, not any UI.
+ */
+private val ProvisioningScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 class AuthActivity : AppCompatActivity() {
     private lateinit var patientManager: PatientManager
@@ -56,36 +67,58 @@ class AuthActivity : AppCompatActivity() {
         // Provision the PIN-derived DB key BEFORE any DB access (the DB is encrypted).
         AggregatorSession.provision(this, pin, patient.id)
 
-        // Save locally immediately so the app works even if backend is offline
-        patientManager.savePatient(patient)
+        // Save locally immediately so the app works even if backend is offline.
+        // Opening the encrypted DB can throw if this device already holds data secured
+        // with a DIFFERENT PIN (SQLCipher can only reopen a file with its original key).
+        // Guard it so we surface a clear message instead of crashing.
+        try {
+            patientManager.savePatient(patient)
+        } catch (e: Exception) {
+            AggregatorSession.lock()
+            Toast.makeText(
+                this,
+                "This device already holds encrypted records secured with a different PIN. " +
+                    "Log in with the original PIN, or clear the app's data to start over.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
         SyncWorkScheduler.schedulePeriodicSync(this)
         SyncWorkScheduler.enqueueImmediateSync(this)
         patientIdInput.setText(patient.id)
 
-        // Register with backend in background — non-blocking
-        lifecycleScope.launch {
-            setLoading(true)
+        // Register with backend in the background — non-blocking, so we can navigate
+        // to Main immediately (offline-first). This MUST run on a process-lifetime
+        // scope, NOT lifecycleScope: goToMain() finishes this activity right away,
+        // which would cancel a lifecycleScope coroutine mid-flight (especially during
+        // a 30–60s Render cold start) and DROP the returned credential before
+        // saveFromServer() persists it. Use applicationContext — the activity is gone.
+        val appContext = applicationContext
+        ProvisioningScope.launch {
             patientRepo.register(patient).fold(
                 onSuccess = { reg ->
                     val creds = reg.credentials
                     val credNote = if (creds?.privateKey != null &&
-                        CredentialStore.saveFromServer(this@AuthActivity, patient.id, creds)
+                        CredentialStore.saveFromServer(appContext, patient.id, creds)
                     ) "credentials secured" else "no credentials"
-                    Toast.makeText(
-                        this@AuthActivity,
-                        "Registered: $name (Patient ID: ${patient.id}, $credNote)",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            appContext,
+                            "Registered: $name (Patient ID: ${patient.id}, $credNote)",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 },
                 onFailure = {
-                    Toast.makeText(
-                        this@AuthActivity,
-                        "Saved locally (Patient ID: ${patient.id}, ${it.message})",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            appContext,
+                            "Saved locally (Patient ID: ${patient.id}, ${it.message})",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             )
-            setLoading(false)
         }
 
         goToMain(patient.name)
@@ -105,9 +138,10 @@ class AuthActivity : AppCompatActivity() {
 
         // Provision the PIN-derived key and verify it opens the encrypted DB.
         AggregatorSession.provision(this, pin, patientId)
+        var hasLocalCred = false
         val openError: String? = try {
-            patientManager.getCurrentPatient()       // opens the encrypted DB (fails here on wrong PIN)
-            CredentialStore.loadIntoSession(this)     // load credential into memory
+            patientManager.getCurrentPatient()               // opens the encrypted DB (fails here on wrong PIN)
+            hasLocalCred = CredentialStore.loadIntoSession(this)  // load credential into memory
             null
         } catch (e: Exception) {
             AggregatorSession.lock()
@@ -127,7 +161,8 @@ class AuthActivity : AppCompatActivity() {
         setLoading(true)
         lifecycleScope.launch {
             patientRepo.login(patientId).fold(
-                onSuccess = { cloudPatient ->
+                onSuccess = { loginData ->
+                    val cloudPatient = loginData.patient
                     val localPatient = Patient(
                         id = cloudPatient.patientId,
                         name = cloudPatient.name,
@@ -136,6 +171,16 @@ class AuthActivity : AppCompatActivity() {
                         bloodType = cloudPatient.bloodType.orEmpty()
                     )
                     patientManager.savePatient(localPatient)
+
+                    // If this device has no credential yet (e.g. app data was cleared),
+                    // restore it from the server so NFC mutual auth works. The server
+                    // returns the stored keypair + cert on login.
+                    if (!hasLocalCred) {
+                        val creds = loginData.credentials
+                        if (creds?.privateKey != null) {
+                            CredentialStore.saveFromServer(this@AuthActivity, cloudPatient.patientId, creds)
+                        }
+                    }
 
                     val syncMessage = patientRepo.syncPatientRecords(this@AuthActivity, cloudPatient).fold(
                         onSuccess = { count -> "Fetched $count record(s) from cloud." },

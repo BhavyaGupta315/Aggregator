@@ -59,6 +59,12 @@ data class PatientCloudData(
     @SerializedName("bloodType") val bloodType: String?
 )
 
+/** Login result: the cloud patient profile plus any stored credentials to restore. */
+data class PatientLoginData(
+    val patient: PatientCloudData,
+    val credentials: Credentials?
+)
+
 data class PatientRecordData(
     @SerializedName("patientId") val patientId: String,
     @SerializedName("nurseId") val nurseId: String?,
@@ -90,9 +96,11 @@ class PatientRepository {
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        // 60s to absorb a Render free-tier cold start (UptimeRobot keeps it warm,
+        // but a missed ping can still leave the first request waking the instance).
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .addInterceptor(logging)
         .build()
 
@@ -132,7 +140,7 @@ class PatientRepository {
         }
     }
 
-    suspend fun login(patientId: String): Result<PatientCloudData> = withContext(Dispatchers.IO) {
+    suspend fun login(patientId: String): Result<PatientLoginData> = withContext(Dispatchers.IO) {
         fetchPatient(patientId)
     }
 
@@ -143,7 +151,7 @@ class PatientRepository {
             }
         }
 
-    private suspend fun fetchPatient(patientId: String): Result<PatientCloudData> = withContext(Dispatchers.IO) {
+    private suspend fun fetchPatient(patientId: String): Result<PatientLoginData> = withContext(Dispatchers.IO) {
         val candidateUrls = listOf(
             "$primaryBaseUrl/api/patients/$patientId",
             "$secondaryBaseUrl/api/patients/$patientId"
@@ -163,7 +171,7 @@ class PatientRepository {
                     val body = response.body?.string().orEmpty()
                     val patient = parsePatient(body)
                     if (patient != null) {
-                        return@withContext Result.success(patient)
+                        return@withContext Result.success(PatientLoginData(patient, parseCredentials(body)))
                     }
 
                     lastError = Exception("Unexpected patient response from $url")
@@ -174,6 +182,20 @@ class PatientRepository {
         }
 
         Result.failure(lastError ?: Exception("Patient ID not found. Please register first."))
+    }
+
+    /** Extract the optional `credentials` object from a login response body. */
+    private fun parseCredentials(body: String): Credentials? {
+        if (body.isBlank()) return null
+        return try {
+            val root = JsonParser().parse(body)
+            if (!root.isJsonObject) return null
+            val credEl = root.asJsonObject.get("credentials")
+            if (credEl != null && credEl.isJsonObject) gson.fromJson(credEl, Credentials::class.java) else null
+        } catch (e: Exception) {
+            Log.e("PatientRepository", "parseCredentials", e)
+            null
+        }
     }
 
     private suspend fun fetchPatientRecords(patientId: String): Result<List<PatientRecordData>> =

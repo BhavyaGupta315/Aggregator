@@ -52,7 +52,16 @@ object AggregatorSession {
     /** Derive and hold the DB key. Does not open the DB yet. */
     fun provision(context: Context, pin: String, patientId: String) {
         val salt = PinCrypto.getOrCreateSalt(context)
-        passphrase = PinCrypto.deriveKey(pin, patientId, salt)
+        val newPassphrase = PinCrypto.deriveKey(pin, patientId, salt)
+        // The DB is a process-wide singleton bound to the passphrase it was first
+        // opened with. If the key changes (different PIN/patient, or a retry after a
+        // failed attempt), drop the cached handle so getInstance() reopens with THIS
+        // key — otherwise a correct PIN would be silently ignored until process death.
+        val current = passphrase
+        if (current == null || !current.contentEquals(newPassphrase)) {
+            AggregatorDatabase.reset()
+        }
+        passphrase = newPassphrase
     }
 
     fun lock() {
