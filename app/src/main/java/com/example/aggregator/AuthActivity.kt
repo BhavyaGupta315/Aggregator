@@ -42,6 +42,7 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun handleRegister() {
+        val typedId   = patientIdInput.text.toString().trim()
         val name      = findViewById<EditText>(R.id.patientName).text.toString().trim()
         val age       = findViewById<EditText>(R.id.patientAge).text.toString().trim()
         val gender    = findViewById<EditText>(R.id.patientGender).text.toString().trim()
@@ -57,12 +58,15 @@ class AuthActivity : AppCompatActivity() {
             return
         }
 
+        // Honor the ID the patient typed — it's what they'll log in with later.
+        // Previously this field was ignored and a timestamp ID was silently
+        // generated, so the typed ID could never be used to log back in.
         val patient = Patient(
             name      = name,
             age       = age.toIntOrNull() ?: 0,
             gender    = gender,
             bloodType = bloodType
-        )
+        ).let { if (typedId.isEmpty()) it else it.copy(id = typedId) }
 
         // Provision the PIN-derived DB key BEFORE any DB access (the DB is encrypted).
         AggregatorSession.provision(this, pin, patient.id)

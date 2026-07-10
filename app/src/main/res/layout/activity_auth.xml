@@ -68,7 +68,7 @@
                 android:id="@+id/patientIdInput"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:hint="Patient ID (for login)"
+                android:hint="Patient ID (choose one — you log in with it)"
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp"
                 android:background="@drawable/medical_input_bg"

@@ -69,10 +69,11 @@ class UpdateActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
             val sessionKey = CryptoUtils.generateSessionKey()
             val encryptedKey = CryptoUtils.rsaEncrypt(sessionKey, peerPublicKey)
-            isoDep.transceive(Utils.concatArrays(CryptoUtils.CMD_AUTH_SEND_KEY, encryptedKey))
+            // Chunked so the command never exceeds the peer's HCE receive limit.
+            NfcAuth.sendChunked(isoDep, CryptoUtils.CMD_AUTH_SEND_KEY, encryptedKey)
 
             val signature = CryptoUtils.rsaSign(encryptedKey, myPrivateKey)
-            val authRes = isoDep.transceive(Utils.concatArrays(CryptoUtils.CMD_AUTH_SEND_SIG, signature))
+            val authRes = NfcAuth.sendChunked(isoDep, CryptoUtils.CMD_AUTH_SEND_SIG, signature)
 
             // 2. Verify Auth
             val decryptedAck = CryptoUtils.xorEncryptDecrypt(authRes.copyOfRange(0, authRes.size - 2), sessionKey)
