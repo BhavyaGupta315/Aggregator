@@ -17,6 +17,7 @@ class SyncActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var fileNameText: TextView
     private lateinit var logText: TextView
+    private var wifiDirectLaunched = false
 
     private val authReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -62,7 +63,11 @@ class SyncActivity : AppCompatActivity() {
                 MyHostApduService.setFileForTransfer(fileContent, "text/plain")
                 statusText.text = "Ready to Sync"
                 fileNameText.text = "File loaded: $fileName\nSize: ${fileContent.size} bytes"
-                logText.text = "Hold nursing device near reader to transfer.\n"
+                logText.text = if (TransferModeStore.isWifiDirect(this)) {
+                    "Ready to transmit over Wi-Fi Direct.\n"
+                } else {
+                    "Hold nursing device near reader to transfer.\n"
+                }
             } else {
                 val msg = "No records logged for $patientName today."
                 MyHostApduService.setTextForTransfer(msg)
@@ -70,10 +75,19 @@ class SyncActivity : AppCompatActivity() {
                 fileNameText.text = "No local file exists for today."
                 logText.text = "Will transmit empty state alert to receiver.\n"
             }
+            launchWifiDirectIfNeeded()
         } catch (e: Exception) {
             statusText.text = "System Error"
             fileNameText.text = e.message
         }
+    }
+
+    private fun launchWifiDirectIfNeeded() {
+        if (!TransferModeStore.isWifiDirect(this) || wifiDirectLaunched) return
+        wifiDirectLaunched = true
+        startActivity(Intent(this, WifiDirectTransferActivity::class.java).apply {
+            putExtra(WifiDirectTransferActivity.EXTRA_DIRECTION, WifiDirectTransferActivity.DIRECTION_SEND)
+        })
     }
 
     override fun onResume() {

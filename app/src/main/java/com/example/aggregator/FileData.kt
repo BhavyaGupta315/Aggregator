@@ -19,3 +19,11 @@ data class FileData(val name: String, val content: ByteArray) {
         return result
     }
 }
+
+data class TransferSnapshot(
+    val mode: String,
+    val text: String?,
+    val fileContent: ByteArray?,
+    val fileMimeType: String?,
+    val files: List<FileData>
+)

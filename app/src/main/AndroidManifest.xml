@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature
         android:name="android.hardware.nfc.hce"
-        android:required="true" />
+        android:required="false" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Storage Permissions (Simplified for Scoped Storage) -->
@@ -15,6 +15,16 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="true" />
 
     <application
         android:allowBackup="true"
@@ -47,6 +57,11 @@
             android:name=".PatientShareActivity"
             android:exported="false"
             android:label="Share Patient Details" />
+
+        <activity
+            android:name=".WifiDirectTransferActivity"
+            android:exported="false"
+            android:label="Wi-Fi Direct Transfer" />
 
 
         <activity

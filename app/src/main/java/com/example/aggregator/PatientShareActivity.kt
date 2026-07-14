@@ -18,6 +18,7 @@ class PatientShareActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var fileNameText: TextView
     private lateinit var patientManager: PatientManager
+    private var wifiDirectLaunched = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,8 +71,15 @@ class PatientShareActivity : AppCompatActivity() {
                 📄 File: $fileName
                 Preview: $preview...
                 
-                🔄 Tap NFC receiver device now
+                🔄 ${if (TransferModeStore.isWifiDirect(this)) "Show the Wi-Fi Direct QR to the receiver" else "Tap NFC receiver device now"}
             """.trimIndent()
+
+            if (TransferModeStore.isWifiDirect(this) && !wifiDirectLaunched) {
+                wifiDirectLaunched = true
+                startActivity(android.content.Intent(this, WifiDirectTransferActivity::class.java).apply {
+                    putExtra(WifiDirectTransferActivity.EXTRA_DIRECTION, WifiDirectTransferActivity.DIRECTION_SEND)
+                })
+            }
 
             Toast.makeText(
                 this,

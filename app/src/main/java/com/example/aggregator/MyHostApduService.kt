@@ -84,6 +84,15 @@ class MyHostApduService : HostApduService() {
             sharedFileMimeType = null
             sharedFileQueue.clear()
         }
+
+        fun snapshotTransferState(): TransferSnapshot =
+            TransferSnapshot(
+                mode = sharedTransferMode,
+                text = sharedTextContent,
+                fileContent = sharedFileContent,
+                fileMimeType = sharedFileMimeType,
+                files = sharedFileQueue.toList()
+            )
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
