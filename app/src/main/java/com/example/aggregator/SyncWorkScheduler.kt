@@ -12,21 +12,17 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 object SyncWorkScheduler {
-    private const val PERIODIC_SYNC_WORK = "aggregator_periodic_cloud_sync"
-    private const val ONE_TIME_SYNC_WORK = "aggregator_one_time_cloud_sync"
-
-    private fun networkConstraints(): Constraints =
-        Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
     fun schedulePeriodicSync(context: Context) {
         val request = PeriodicWorkRequestBuilder<CloudSyncWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(networkConstraints())
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
             .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            PERIODIC_SYNC_WORK,
+        WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
+            "aggregator_periodic_cloud_sync",
             ExistingPeriodicWorkPolicy.UPDATE,
             request
         )
@@ -34,12 +30,16 @@ object SyncWorkScheduler {
 
     fun enqueueImmediateSync(context: Context) {
         val request = OneTimeWorkRequestBuilder<CloudSyncWorker>()
-            .setConstraints(networkConstraints())
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
 
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            ONE_TIME_SYNC_WORK,
+        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+            "aggregator_one_time_cloud_sync",
             ExistingWorkPolicy.REPLACE,
             request
         )
