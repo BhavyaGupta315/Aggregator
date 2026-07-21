@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
 
     private lateinit var fileRecyclerView: RecyclerView
     private lateinit var currentPathText: TextView
@@ -55,9 +55,9 @@ class MainActivity : AppCompatActivity() {
             TransferModeStore.setWifiDirect(this, checked)
         }
 
-        // Cloud sync button — opens dedicated sync screen
+         // Cloud sync button — opens dedicated sync screen
         findViewById<Button>(R.id.SyncHealthDbButton)?.setOnClickListener {
-            startActivity(Intent(this, SyncCloudActivity::class.java))
+            startActivity(Intent(this, SyncRepository::class.java))
         }
 
         sharePatientBtn.setOnClickListener {

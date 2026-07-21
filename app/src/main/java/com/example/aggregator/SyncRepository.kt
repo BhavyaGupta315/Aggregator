@@ -17,6 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import androidx.appcompat.app.AppCompatActivity
 
 // --- Legacy report (raw text blob) — kept for backward compat ---
 data class ReportRequest(
@@ -251,6 +252,12 @@ class SyncRepository {
             val response = apiService.syncReport(request)
 
             if (response.success) {
+                lastUpdatedFile.delete()
+                // Remove parent date folder if now empty
+                val parentDir = lastUpdatedFile.parentFile
+                if (parentDir != null && parentDir.listFiles().isNullOrEmpty()) {
+                    parentDir.delete()
+                }
                 Result.success("Synced ${fileName} from ${date}: ${response.message}")
             } else {
                 Result.failure(Exception(response.message ?: "Sync failed"))

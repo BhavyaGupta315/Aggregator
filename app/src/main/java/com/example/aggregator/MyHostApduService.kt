@@ -12,7 +12,8 @@ import kotlin.math.min
 
 class MyHostApduService : HostApduService() {
 
-    private enum class AuthState { IDLE, KEY_RECEIVED, AUTHENTICATED }
+    // NSE-AA auth states: IDLE → CHALLENGE_SENT → AUTHENTICATED
+    private enum class AuthState { IDLE, CHALLENGE_SENT, AUTHENTICATED }
     private var currentAuthState = AuthState.IDLE
     private var sessionKey: ByteArray? = null
     private var encryptedKeyBuffer: ByteArray? = null
@@ -96,7 +97,9 @@ class MyHostApduService : HostApduService() {
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
-        // Step 1: Selection
+        // ===== NSE-AA Step 1: SELECT — Generate and send challenge =====
+        // Server generates nonce N_S and virtual identity id_VS, encrypts with K_UD
+        // Response: N_S(16) || T1(AES(K_UD, id_VS || N_S)) || SW(2)
         if (Arrays.equals(commandApdu, Utils.SELECT_APD)) {
             currentAuthState = AuthState.IDLE
             sessionKey = null
@@ -109,8 +112,20 @@ class MyHostApduService : HostApduService() {
             currentFileIndex = 0
             fileChunkOffset = 0
 
-            notifyUI("Step 1: Connection Established")
-            return Utils.SELECT_OK_SW
+            // Generate challenge per NSE-AA protocol (Table II, Step 2)
+            serverNonce = CryptoUtils.generateNonce()
+            serverVirtualId = CryptoUtils.generateMyVirtualIdentity(serverNonce!!)
+
+            // T1 = E(K_UD, id_VS || N_S) — encrypted challenge
+            val t1 = CryptoUtils.aesEncrypt(
+                serverVirtualId!! + serverNonce!!,
+                CryptoUtils.getKUD()
+            )
+
+            currentAuthState = AuthState.CHALLENGE_SENT
+            notifyUI("Step 1: Challenge Sent")
+
+            return Utils.concatArrays(serverNonce!!, t1, Utils.SELECT_OK_SW)
         }
 
         // Phase 3: certificate exchange (reader -> card). The reader uploads its cert
@@ -185,25 +200,28 @@ class MyHostApduService : HostApduService() {
                 sessionKey = CryptoUtils.rsaDecrypt(encryptedKey, myPriv)
                 currentAuthState = AuthState.AUTHENTICATED
 
-                // CRITICAL FIX 2: Load the data and enforce reset at the moment of authentication
+                // Load transfer data at authentication time
                 this.transferMode = sharedTransferMode
                 this.textContent = sharedTextContent
-
-                // THESE TWO LINES WERE MISSING:
                 this.fileContent = sharedFileContent
                 this.fileMimeType = sharedFileMimeType
-
                 this.fileQueue = sharedFileQueue.toMutableList()
                 this.currentFileIndex = 0
                 this.fileChunkOffset = 0
 
-                notifyUI("Step 3: Authenticated Securely")
+                notifyUI("Step 2: Mutually Authenticated (NSE-AA)")
 
-                val ack = CryptoUtils.xorEncryptDecrypt("AUTH_OK".toByteArray(), sessionKey!!)
-                return Utils.concatArrays(ack, Utils.SELECT_OK_SW)
+                // T4 = E(K_S, "AUTH_OK"(7) || pwb_S(32) || N_R(16))
+                // Proves server identity to reader (mutual authentication)
+                val t4Plain = "AUTH_OK".toByteArray(Charsets.UTF_8) +
+                    CryptoUtils.MY_PWB + nonceR
+                val t4 = CryptoUtils.aesEncrypt(t4Plain, kS)
+                return Utils.concatArrays(t4, Utils.SELECT_OK_SW)
+
+            } catch (e: Exception) {
+                notifyUI("Auth Error: ${e.message}")
+                return Utils.UNKNOWN_CMD_SW
             }
-            notifyUI("Authentication Failed")
-            return Utils.UNKNOWN_CMD_SW
         }
 
         // Only process data if Authenticated
