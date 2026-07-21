@@ -47,7 +47,7 @@
             android:id="@+id/SyncHealthDbButton"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:text="Sync with Health Database"
+            android:text="Sync today's notes"
             android:textAllCaps="false"
             android:textSize="14sp"
             android:textColor="@color/med_green_primary"
