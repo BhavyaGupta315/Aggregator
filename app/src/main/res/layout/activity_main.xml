@@ -34,11 +34,20 @@
             android:backgroundTint="@color/med_green_primary"
             android:layout_marginBottom="8dp"/>
 
+        <Switch
+            android:id="@+id/transportModeSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Use Wi-Fi Direct instead of NFC"
+            android:textColor="@color/med_text_primary"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
         <Button
             android:id="@+id/SyncHealthDbButton"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:text="Sync with Health Database"
+            android:text="Sync today's notes"
             android:textAllCaps="false"
             android:textSize="14sp"
             android:textColor="@color/med_green_primary"

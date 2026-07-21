@@ -13,7 +13,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
@@ -59,12 +58,21 @@ class UpdateActivity : BaseActivity(), NfcAdapter.ReaderCallback {
 
             // ===== NSE-AA Mutual Authentication (Sethia et al., 2019) =====
 
-            // Step 1: SELECT — receive challenge: N_S(16) || T1(var) || SW(2)
-            val selectRes = isoDep.transceive(Utils.SELECT_APD)
-            if (selectRes.size < 18) throw IOException("Invalid challenge from server")
+            // Phase 3: exchange certificates for the peer public key + our private key.
+            val peerPublicKey = if (CryptoUtils.CERT_AUTH_ENABLED) {
+                NfcAuth.exchangeCerts(isoDep)
+            } else CryptoUtils.getOtherPublicKey()
+            val myPrivateKey = if (CryptoUtils.CERT_AUTH_ENABLED) {
+                CryptoUtils.getSessionPrivateKey() ?: throw IOException("No credential — log in with your PIN.")
+            } else CryptoUtils.getMyPrivateKey()
 
-            val serverNonce = selectRes.copyOfRange(0, 16)
-            val t1 = selectRes.copyOfRange(16, selectRes.size - 2)
+            val sessionKey = CryptoUtils.generateSessionKey()
+            val encryptedKey = CryptoUtils.rsaEncrypt(sessionKey, peerPublicKey)
+            // Chunked so the command never exceeds the peer's HCE receive limit.
+            NfcAuth.sendChunked(isoDep, CryptoUtils.CMD_AUTH_SEND_KEY, encryptedKey)
+
+            val signature = CryptoUtils.rsaSign(encryptedKey, myPrivateKey)
+            val authRes = NfcAuth.sendChunked(isoDep, CryptoUtils.CMD_AUTH_SEND_SIG, signature)
 
             // Decrypt T1 to extract server's virtual identity and nonce
             val t1Plain = CryptoUtils.aesDecrypt(t1, CryptoUtils.getKUD())
@@ -132,7 +140,8 @@ class UpdateActivity : BaseActivity(), NfcAdapter.ReaderCallback {
                     throw IOException("Unsupported transfer mode: $mode")
                 }
             } else {
-                throw IOException("NSE-AA mutual authentication failed")
+                throw IOException("Authentication rejected by peer — signature/credential mismatch " +
+                    "(is the other device logged in and registered under the same CA?)")
             }
         } catch (e: Exception) {
             runOnUiThread { statusText.text = "Error: ${e.message}" }
@@ -177,17 +186,8 @@ class UpdateActivity : BaseActivity(), NfcAdapter.ReaderCallback {
 
     private fun saveReceivedFile(content: ByteArray) {
         try {
-            val appFilesDir = getExternalFilesDir(null) ?: throw IOException("Storage unavailable")
-            val rootDirectory = File(appFilesDir, "NursingDevice")
-            if (!rootDirectory.exists()) rootDirectory.mkdirs()
-
-            // 1. Map to Folder by Date (e.g. "2026-02-22")
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val dateString = dateFormat.format(Date())
-            val todayDir = File(rootDirectory, dateString)
-            if (!todayDir.exists()) todayDir.mkdirs()
-
-            // 2. Extract Patient Name
             val textContent = String(content, Charsets.UTF_8)
             var patientName = "Unknown"
 
@@ -196,25 +196,43 @@ class UpdateActivity : BaseActivity(), NfcAdapter.ReaderCallback {
                 patientName = it.substringAfter("Patient Name:").trim().replace(" ", "_")
             }
 
-            // 3. Build File Name format: patientname_date.txt
+            val patient = PatientManager(this).getCurrentPatient()
             val fileName = "${patientName}_${dateString}.txt"
-            val newFile = File(todayDir, fileName)
-
-            // 4. Create a timestamp header so appended records are readable
             val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             val timeString = timeFormat.format(Date())
+            val reportDao = AggregatorDatabase.getInstance(this).patientReportDao()
+            val existing = patient?.let { reportDao.getReportForDay(it.id, dateString) }
 
-            val appendHeader = if (newFile.exists()) {
+            val appendHeader = if (existing != null && existing.content.isNotBlank()) {
                 "\n\n=================================\nUpdate Received at: $timeString\n=================================\n\n"
             } else {
                 "Initial Record Received at: $timeString\n=================================\n\n"
             }
-
-            // 5. Write to disk using Append Mode (FileOutputStream parameter 'true')
-            FileOutputStream(newFile, true).use { fos ->
-                fos.write(appendHeader.toByteArray(Charsets.UTF_8))
-                fos.write(content)
+            val mergedContent = buildString {
+                if (existing != null && existing.content.isNotBlank()) {
+                    append(existing.content)
+                }
+                append(appendHeader)
+                append(textContent)
             }
+
+            reportDao.upsert(
+                PatientReportEntity(
+                    id = existing?.id ?: 0,
+                    patientId = patient?.id ?: "unknown",
+                    patientName = patient?.name ?: patientName.replace("_", " "),
+                    reportDate = dateString,
+                    content = mergedContent,
+                    updatedAt = System.currentTimeMillis(),
+                    source = "NFC",
+                    isSynced = false,
+                    syncedAt = null,
+                    lastSyncAttemptAt = null,
+                    syncError = null
+                )
+            )
+
+            SyncWorkScheduler.enqueueImmediateSync(this)
 
             runOnUiThread {
                 statusText.text = "Update Saved Successfully!"

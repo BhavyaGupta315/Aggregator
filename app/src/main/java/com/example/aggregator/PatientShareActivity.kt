@@ -12,12 +12,13 @@ import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 
-class PatientShareActivity : BaseActivity() {
+class PatientShareActivity : AppCompatActivity() {
 
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
     private lateinit var fileNameText: TextView
     private lateinit var patientManager: PatientManager
+    private var wifiDirectLaunched = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,8 +71,15 @@ class PatientShareActivity : BaseActivity() {
                 📄 File: $fileName
                 Preview: $preview...
                 
-                🔄 Tap NFC receiver device now
+                🔄 ${if (TransferModeStore.isWifiDirect(this)) "Show the Wi-Fi Direct QR to the receiver" else "Tap NFC receiver device now"}
             """.trimIndent()
+
+            if (TransferModeStore.isWifiDirect(this) && !wifiDirectLaunched) {
+                wifiDirectLaunched = true
+                startActivity(android.content.Intent(this, WifiDirectTransferActivity::class.java).apply {
+                    putExtra(WifiDirectTransferActivity.EXTRA_DIRECTION, WifiDirectTransferActivity.DIRECTION_SEND)
+                })
+            }
 
             Toast.makeText(
                 this,

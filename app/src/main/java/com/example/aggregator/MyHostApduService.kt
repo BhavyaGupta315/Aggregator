@@ -5,6 +5,7 @@ import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
 import java.nio.ByteBuffer
+import java.security.PublicKey
 import java.util.Arrays
 import kotlin.compareTo
 import kotlin.math.min
@@ -15,8 +16,15 @@ class MyHostApduService : HostApduService() {
     private enum class AuthState { IDLE, CHALLENGE_SENT, AUTHENTICATED }
     private var currentAuthState = AuthState.IDLE
     private var sessionKey: ByteArray? = null
-    private var serverNonce: ByteArray? = null
-    private var serverVirtualId: ByteArray? = null
+    private var encryptedKeyBuffer: ByteArray? = null
+    // Phase 3: peer's public key, extracted from its certificate during cert exchange.
+    private var peerPublicKey: PublicKey? = null
+    // Chunked-APDU reassembly for the auth phase (AUTH_CRT / AUTH_KEY / AUTH_SIG) and
+    // chunked serving of our own cert (AUTH_CRG). Needed because some controllers
+    // (e.g. Galaxy Tab Active5) can't receive extended-length APDUs in HCE mode.
+    private var chunkedCmdTag: String? = null
+    private val chunkedBuffer = java.io.ByteArrayOutputStream()
+    private var certSendOffset = 0
     private var transferMode = "NONE"
     private var textContent: String? = null
     private var fileContent: ByteArray? = null
@@ -77,6 +85,15 @@ class MyHostApduService : HostApduService() {
             sharedFileMimeType = null
             sharedFileQueue.clear()
         }
+
+        fun snapshotTransferState(): TransferSnapshot =
+            TransferSnapshot(
+                mode = sharedTransferMode,
+                text = sharedTextContent,
+                fileContent = sharedFileContent,
+                fileMimeType = sharedFileMimeType,
+                files = sharedFileQueue.toList()
+            )
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
@@ -86,8 +103,12 @@ class MyHostApduService : HostApduService() {
         if (Arrays.equals(commandApdu, Utils.SELECT_APD)) {
             currentAuthState = AuthState.IDLE
             sessionKey = null
-            serverNonce = null
-            serverVirtualId = null
+            peerPublicKey = null
+            chunkedCmdTag = null
+            chunkedBuffer.reset()
+            certSendOffset = 0
+
+            // CRITICAL FIX 1: Reset indices on every new NFC tap
             currentFileIndex = 0
             fileChunkOffset = 0
 
@@ -107,57 +128,76 @@ class MyHostApduService : HostApduService() {
             return Utils.concatArrays(serverNonce!!, t1, Utils.SELECT_OK_SW)
         }
 
-        // ===== NSE-AA Step 2: AUTH_RESP — Verify reader, derive session key K_S =====
-        // Reader sends: CMD(8) || id_VR(16) || N_R(16) || T2(var) || T3(32)
-        // Server verifies pwb, nonces, HMAC, then derives K_S and responds with T4
-        val cmdResp = CryptoUtils.CMD_AUTH_RESP
-        if (commandApdu.size > cmdResp.size &&
-            commandApdu.take(cmdResp.size).toByteArray().contentEquals(cmdResp)) {
-
-            if (currentAuthState != AuthState.CHALLENGE_SENT) return Utils.UNKNOWN_CMD_SW
-            val storedNonce = serverNonce ?: return Utils.UNKNOWN_CMD_SW
-            val storedVirtualId = serverVirtualId ?: return Utils.UNKNOWN_CMD_SW
-
+        // Phase 3: certificate exchange (reader -> card). The reader uploads its cert
+        // in chunks; on the final chunk we verify it against our CA and remember its
+        // public key. The reader then pulls our cert in chunks via AUTH_CRG.
+        val cmdCert = CryptoUtils.CMD_AUTH_SEND_CERT
+        if (CryptoUtils.CERT_AUTH_ENABLED && commandApdu.size > cmdCert.size &&
+            commandApdu.take(cmdCert.size).toByteArray().contentEquals(cmdCert)) {
+            val myCert = CryptoUtils.getMyCertificatePem()
+            if (myCert == null) {
+                notifyUI("Cert exchange failed: no credential on this device — log in with your PIN")
+                return Utils.UNKNOWN_CMD_SW
+            }
+            val peerCertBytes = reassembleChunks("AUTH_CRT", commandApdu) ?: return Utils.SELECT_OK_SW
             try {
-                val payload = commandApdu.copyOfRange(cmdResp.size, commandApdu.size)
-                val idVR = payload.copyOfRange(0, 16)
-                val nonceR = payload.copyOfRange(16, 32)
-                val t3 = payload.copyOfRange(payload.size - 32, payload.size)
-                val t2 = payload.copyOfRange(32, payload.size - 32)
+                peerPublicKey = CryptoUtils.verifyPeerCert(String(peerCertBytes, Charsets.UTF_8))
+            } catch (e: PeerCertException) {
+                notifyUI("Peer cert rejected: ${e.message}")
+                return Utils.UNKNOWN_CMD_SW
+            }
+            certSendOffset = 0
+            notifyUI("Certificates exchanged")
+            return Utils.SELECT_OK_SW
+        }
 
-                // Decrypt T2: E(K_UD, pwb_R(32) || N_R(16) || N_S(16))
-                val t2Plain = CryptoUtils.aesDecrypt(t2, CryptoUtils.getKUD())
-                val pwbR = t2Plain.copyOfRange(0, 32)
-                val nR = t2Plain.copyOfRange(32, 48)
-                val nS = t2Plain.copyOfRange(48, 64)
+        // Phase 3: serve our own cert to the reader, one chunk per AUTH_CRG command.
+        if (CryptoUtils.CERT_AUTH_ENABLED && Arrays.equals(commandApdu, CryptoUtils.CMD_AUTH_GET_CERT)) {
+            val myCert = CryptoUtils.getMyCertificatePem()?.toByteArray(Charsets.UTF_8)
+            if (myCert == null) {
+                notifyUI("Cert exchange failed: no credential on this device — log in with your PIN")
+                return Utils.UNKNOWN_CMD_SW
+            }
+            val end = min(certSendOffset + CryptoUtils.AUTH_CHUNK_SIZE, myCert.size)
+            val flag = if (end == myCert.size) CryptoUtils.AUTH_CHUNK_LAST else CryptoUtils.AUTH_CHUNK_MORE
+            val chunk = myCert.copyOfRange(certSendOffset, end)
+            Log.d("HCE_AUTH", "serveCert -> chunk from $certSendOffset..$end of ${myCert.size} last=${end == myCert.size}")
+            certSendOffset = if (end == myCert.size) 0 else end
+            return Utils.concatArrays(byteArrayOf(flag), chunk, Utils.SELECT_OK_SW)
+        }
 
-                // Verify reader's password-hash identity (Table II, Step 6)
-                if (!pwbR.contentEquals(CryptoUtils.OTHER_PWB)) {
-                    notifyUI("Auth Failed: Unknown device")
+        // Step 2: Key Exchange
+        val cmdKey = CryptoUtils.CMD_AUTH_SEND_KEY
+        if (commandApdu.size > cmdKey.size && commandApdu.take(cmdKey.size).toByteArray().contentEquals(cmdKey)) {
+            encryptedKeyBuffer = reassembleChunks("AUTH_KEY", commandApdu) ?: return Utils.SELECT_OK_SW
+            currentAuthState = AuthState.KEY_RECEIVED
+            notifyUI("Step 2: Key Received")
+            return Utils.SELECT_OK_SW
+        }
+
+        // Step 3: Signature & Final Auth
+        val cmdSig = CryptoUtils.CMD_AUTH_SEND_SIG
+        if (commandApdu.size > cmdSig.size && commandApdu.take(cmdSig.size).toByteArray().contentEquals(cmdSig)) {
+            if (currentAuthState != AuthState.KEY_RECEIVED) return Utils.UNKNOWN_CMD_SW
+
+            val signature = reassembleChunks("AUTH_SIG", commandApdu) ?: return Utils.SELECT_OK_SW
+            val encryptedKey = encryptedKeyBuffer ?: return Utils.UNKNOWN_CMD_SW
+
+            // Phase 3: verify with the peer's cert key + decrypt with our own
+            // credential; fall back to the hardcoded pair when cert-auth is off.
+            val verifyKey = if (CryptoUtils.CERT_AUTH_ENABLED) peerPublicKey else CryptoUtils.getOtherPublicKey()
+            if (verifyKey == null) {
+                notifyUI("Auth Failed: certificate not exchanged")
+                return Utils.UNKNOWN_CMD_SW
+            }
+            val verified = CryptoUtils.rsaVerify(encryptedKey, signature, verifyKey)
+            if (verified) {
+                val myPriv = if (CryptoUtils.CERT_AUTH_ENABLED) CryptoUtils.getSessionPrivateKey() else CryptoUtils.getMyPrivateKey()
+                if (myPriv == null) {
+                    notifyUI("Auth Failed: no credential on this device")
                     return Utils.UNKNOWN_CMD_SW
                 }
-                // Verify nonce freshness (anti-replay, Table II, Step 5)
-                if (!nS.contentEquals(storedNonce)) {
-                    notifyUI("Auth Failed: Stale challenge")
-                    return Utils.UNKNOWN_CMD_SW
-                }
-                if (!nR.contentEquals(nonceR)) {
-                    notifyUI("Auth Failed: Nonce mismatch")
-                    return Utils.UNKNOWN_CMD_SW
-                }
-
-                // Derive session key K_S per NSE-AA KDF (Section III-A.2)
-                val kS = CryptoUtils.deriveSessionKey(pwbR, CryptoUtils.MY_PWB, nonceR, storedNonce)
-
-                // Verify HMAC T3 for message integrity
-                val expectedT3 = CryptoUtils.hmacSha256(kS,
-                    idVR + nonceR + storedVirtualId + storedNonce)
-                if (!t3.contentEquals(expectedT3)) {
-                    notifyUI("Auth Failed: Integrity check failed")
-                    return Utils.UNKNOWN_CMD_SW
-                }
-
-                sessionKey = kS
+                sessionKey = CryptoUtils.rsaDecrypt(encryptedKey, myPriv)
                 currentAuthState = AuthState.AUTHENTICATED
 
                 // Load transfer data at authentication time
@@ -310,11 +350,34 @@ class MyHostApduService : HostApduService() {
     override fun onDeactivated(reason: Int) {
         currentAuthState = AuthState.IDLE
         sessionKey = null
+        peerPublicKey = null
     }
     private fun notifyUI(step: String) {
         val intent = Intent("NFC_AUTH_STEP")
         intent.putExtra("step_message", step)
         sendBroadcast(intent)
+    }
+
+    /**
+     * Reassemble a chunked auth command ([cmd(8)][flag(1)][chunk]). Returns null
+     * while more chunks are pending (caller acks with SELECT_OK_SW), or the fully
+     * assembled payload on the final chunk. Switching to a different command tag
+     * discards any half-finished buffer from an interrupted exchange.
+     */
+    private fun reassembleChunks(cmdName: String, commandApdu: ByteArray): ByteArray? {
+        if (chunkedCmdTag != cmdName) {
+            chunkedCmdTag = cmdName
+            chunkedBuffer.reset()
+        }
+        val flag = commandApdu[8]
+        chunkedBuffer.write(commandApdu, 9, commandApdu.size - 9)
+        val last = flag == CryptoUtils.AUTH_CHUNK_LAST
+        Log.d("HCE_AUTH", "reassemble[$cmdName]: rxApduLen=${commandApdu.size} chunk=${commandApdu.size - 9} last=$last total=${chunkedBuffer.size()}")
+        if (!last) return null
+        val payload = chunkedBuffer.toByteArray()
+        chunkedBuffer.reset()
+        chunkedCmdTag = null
+        return payload
     }
 
 }

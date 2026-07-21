@@ -6,9 +6,8 @@ import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import java.io.File
 
-class TextViewerActivity : BaseActivity() {
+class TextViewerActivity : AppCompatActivity() {
     private lateinit var fileNameText: TextView
     private lateinit var fileContentText: TextView
     private lateinit var backButton: Button
@@ -24,16 +23,15 @@ class TextViewerActivity : BaseActivity() {
         scrollView = findViewById(R.id.scrollView)
 
         // Get file path from intent
-        val filePath = intent.getStringExtra("file_path") ?: ""
+        val reportId = intent.getLongExtra("report_id", -1L)
         val fileName = intent.getStringExtra("file_name") ?: "Unknown"
-
-        Log.d("TextViewerActivity", "Opening file: $filePath")
+        Log.d("TextViewerActivity", "Opening report: $reportId")
 
         // Set title
         fileNameText.text = "📄 $fileName"
 
         // Load and display file content
-        displayFile(filePath)
+        displayFile(reportId)
 
         // Back button
         backButton.setOnClickListener {
@@ -41,31 +39,21 @@ class TextViewerActivity : BaseActivity() {
         }
     }
 
-    private fun displayFile(filePath: String) {
+    private fun displayFile(reportId: Long) {
         try {
-            if (filePath.isEmpty()) {
-                fileContentText.text = "❌ No file path provided"
+            if (reportId < 0) {
+                fileContentText.text = "❌ No report selected"
                 return
             }
 
-            val file = File(filePath)
-            if (!file.exists()) {
-                fileContentText.text = "❌ File not found: $filePath"
-                Log.e("TextViewerActivity", "File not found: $filePath")
+            val report = AggregatorDatabase.getInstance(this).patientReportDao().getReportById(reportId)
+            if (report == null) {
+                fileContentText.text = "❌ Report not found"
+                Log.e("TextViewerActivity", "Report not found: $reportId")
                 return
             }
-
-            if (!file.isFile) {
-                fileContentText.text = "❌ Path is not a file: $filePath"
-                Log.e("TextViewerActivity", "Path is not a file: $filePath")
-                return
-            }
-
-            // Read file content
-            val content = file.readText(Charsets.UTF_8)
-            fileContentText.text = content
-
-            Log.d("TextViewerActivity", "✅ File loaded: ${file.length()} bytes")
+            fileContentText.text = report.content
+            Log.d("TextViewerActivity", "✅ Report loaded: ${report.content.length} chars")
 
             // Scroll to top
             scrollView.post {

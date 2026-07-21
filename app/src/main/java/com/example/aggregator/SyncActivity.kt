@@ -8,16 +8,16 @@ import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class SyncActivity : BaseActivity() {
+class SyncActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var fileNameText: TextView
     private lateinit var logText: TextView
+    private var wifiDirectLaunched = false
 
     private val authReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -48,22 +48,26 @@ class SyncActivity : BaseActivity() {
 
     private fun prepareTodayRecord(patientName: String) {
         try {
-            val appFilesDir = getExternalFilesDir(null)
-            val rootDirectory = File(appFilesDir, "NursingDevice")
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val dateString = dateFormat.format(Date())
-            val todayDir = File(rootDirectory, dateString)
+            val currentPatient = PatientManager(this).getCurrentPatient()
+            val fileName = "${patientName.replace(" ", "_")}_${dateString}.txt"
+            val report = currentPatient?.let {
+                AggregatorDatabase.getInstance(this)
+                    .patientReportDao()
+                    .getReportForDay(it.id, dateString)
+            }
 
-            val cleanName = patientName.replace(" ", "_")
-            val fileName = "${cleanName}_${dateString}.txt"
-            val file = File(todayDir, fileName)
-
-            if (file.exists()) {
-                val fileContent = file.readBytes()
+            if (report != null) {
+                val fileContent = report.content.toByteArray(Charsets.UTF_8)
                 MyHostApduService.setFileForTransfer(fileContent, "text/plain")
                 statusText.text = "Ready to Sync"
                 fileNameText.text = "File loaded: $fileName\nSize: ${fileContent.size} bytes"
-                logText.text = "Hold nursing device near reader to transfer.\n"
+                logText.text = if (TransferModeStore.isWifiDirect(this)) {
+                    "Ready to transmit over Wi-Fi Direct.\n"
+                } else {
+                    "Hold nursing device near reader to transfer.\n"
+                }
             } else {
                 val msg = "No records logged for $patientName today."
                 MyHostApduService.setTextForTransfer(msg)
@@ -71,10 +75,19 @@ class SyncActivity : BaseActivity() {
                 fileNameText.text = "No local file exists for today."
                 logText.text = "Will transmit empty state alert to receiver.\n"
             }
+            launchWifiDirectIfNeeded()
         } catch (e: Exception) {
             statusText.text = "System Error"
             fileNameText.text = e.message
         }
+    }
+
+    private fun launchWifiDirectIfNeeded() {
+        if (!TransferModeStore.isWifiDirect(this) || wifiDirectLaunched) return
+        wifiDirectLaunched = true
+        startActivity(Intent(this, WifiDirectTransferActivity::class.java).apply {
+            putExtra(WifiDirectTransferActivity.EXTRA_DIRECTION, WifiDirectTransferActivity.DIRECTION_SEND)
+        })
     }
 
     override fun onResume() {

@@ -8,7 +8,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-import java.io.File
 
 class SyncCloudActivity : AppCompatActivity() {
 
@@ -22,6 +21,7 @@ class SyncCloudActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_sync_cloud)
+        SyncWorkScheduler.schedulePeriodicSync(this)
 
         statusText   = findViewById(R.id.cloudStatusText)
         fileNameText = findViewById(R.id.cloudFileNameText)
@@ -62,20 +62,13 @@ class SyncCloudActivity : AppCompatActivity() {
     }
 
     private fun showLatestFile() {
-        val appFilesDir = getExternalFilesDir(null) ?: return
-        val nursingDir = File(appFilesDir, "NursingDevice")
+        val latestReport = AggregatorDatabase.getInstance(this).patientReportDao().getLatestReport()
 
-        val latestFile = nursingDir.listFiles()
-            ?.filter { it.isDirectory }
-            ?.flatMap { it.listFiles()?.toList() ?: emptyList() }
-            ?.filter { it.isFile && it.extension == "txt" }
-            ?.maxByOrNull { it.lastModified() }
-
-        if (latestFile != null) {
-            val dateLabel = latestFile.parentFile?.name ?: "unknown date"
-            fileNameText.text = "File: ${latestFile.name}\nDate: $dateLabel\nSize: ${latestFile.length()} bytes"
+        if (latestReport != null) {
+            val fileName = "${latestReport.patientName.replace(" ", "_")}_${latestReport.reportDate}.txt"
+            fileNameText.text = "File: $fileName\nDate: ${latestReport.reportDate}\nSize: ${latestReport.content.toByteArray().size} bytes"
         } else {
-            fileNameText.text = "No record files found in NursingDevice folder."
+            fileNameText.text = "No record files found in local Room database."
             syncNowButton.isEnabled = false
         }
     }
@@ -86,12 +79,16 @@ class SyncCloudActivity : AppCompatActivity() {
         statusText.text = "Syncing..."
 
         lifecycleScope.launch {
-            val result = repo.syncLatestRecord(this@SyncCloudActivity)
+            val result = repo.syncPendingRecords(this@SyncCloudActivity)
 
             result.fold(
-                onSuccess = { message ->
+                onSuccess = { count ->
                     statusText.text = "Sync complete"
-                    fileNameText.text = message
+                    fileNameText.text = if (count == 0) {
+                        "No pending local records needed syncing."
+                    } else {
+                        "Synced $count pending record(s) to cloud."
+                    }
                     syncNowButton.isEnabled = true
                 },
                 onFailure = { error ->

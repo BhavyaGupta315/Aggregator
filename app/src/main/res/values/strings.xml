@@ -11,6 +11,6 @@
     <string name="file_icon">File Icon</string>
     <string name="details">Details</string>
     <string name="no_files_or_folders_n_nuse_update_to_receive_files">No files or folders\n\nUse \'Update\' to receive files</string>
-    <string name="sync">Sync</string>
+    <string name="sync">Sync all notes</string>
     <string name="update">Update</string>
 </resources>

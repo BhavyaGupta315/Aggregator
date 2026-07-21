@@ -13,7 +13,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -70,7 +69,7 @@ enum class ServerStatus {
     SERVER_DOWN
 }
 
-class SyncRepository: AppCompatActivity() {
+class SyncRepository {
     private val BASE_URL = "https://nfc-backend-ostp.onrender.com"
     private var apiService: HealthApiService
 
@@ -138,7 +137,12 @@ class SyncRepository: AppCompatActivity() {
     //   Medication: <value>
     //   Description: <value>
     //   Updated on: dd/MM/yyyy HH:mm:ss
-    private fun parseToRecordRequest(content: String, date: String, context: Context): RecordRequest? {
+    private fun parseToRecordRequest(
+        content: String,
+        date: String,
+        context: Context,
+        fallbackPatientId: String? = null
+    ): RecordRequest? {
         fun extractLine(prefix: String): String? =
             content.lines().find { it.startsWith(prefix) }?.removePrefix(prefix)?.trim()
 
@@ -156,66 +160,90 @@ class SyncRepository: AppCompatActivity() {
         }
 
         // Prefer the registered patient's ID; fall back to name from the file
-        val patientId = PatientManager(context).getCurrentPatient()?.id
+        val patientId = extractLine("Patient ID: ")
+            ?: fallbackPatientId
+            ?: PatientManager(context).getCurrentPatient()?.id
             ?: extractLine("Patient Name: ")
             ?: "unknown"
 
         return RecordRequest(patientId, nurseId, date, time, bp, hr, rr, temp, obs, med)
     }
 
+    private suspend fun syncReportEntity(context: Context, report: PatientReportEntity): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = parseToRecordRequest(
+                    content = report.content,
+                    date = report.reportDate,
+                    context = context,
+                    fallbackPatientId = report.patientId
+                )
+                    ?: return@withContext Result.failure(Exception("Could not parse record — Nurse ID missing"))
+
+                val response = apiService.syncRecord(request)
+                if (response.success) {
+                    AggregatorDatabase.getInstance(context).patientReportDao()
+                        .markSynced(report.id, System.currentTimeMillis())
+                    val fileName = "${report.patientName.replace(" ", "_")}_${report.reportDate}.txt"
+                    Result.success("Synced $fileName: ${response.message}")
+                } else {
+                    AggregatorDatabase.getInstance(context).patientReportDao()
+                        .markSyncFailed(report.id, System.currentTimeMillis(), response.message)
+                    Result.failure(Exception(response.message ?: "Sync failed"))
+                }
+            } catch (e: Exception) {
+                AggregatorDatabase.getInstance(context).patientReportDao()
+                    .markSyncFailed(report.id, System.currentTimeMillis(), e.message)
+                Log.e("SyncRepository", "Record sync error", e)
+                Result.failure(e)
+            }
+        }
+
     // Primary sync method — sends structured fields to /api/records.
     suspend fun syncLatestRecord(context: Context): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val appFilesDir = context.getExternalFilesDir(null)
-                ?: return@withContext Result.failure(Exception("No external storage"))
-            val nursingDir = File(appFilesDir, "NursingDevice")
-            if (!nursingDir.exists()) return@withContext Result.failure(Exception("No NursingDevice folder found"))
-
-            val latestFile = nursingDir.listFiles()
-                ?.filter { it.isDirectory }
-                ?.flatMap { it.listFiles()?.toList() ?: emptyList() }
-                ?.filter { it.isFile && it.extension == "txt" }
-                ?.maxByOrNull { it.lastModified() }
+            val latestReport = AggregatorDatabase.getInstance(context).patientReportDao().getLatestReport()
                 ?: return@withContext Result.failure(Exception("No record files found"))
 
-            val date    = latestFile.parentFile?.name ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val content = latestFile.readText()
-
-            val request = parseToRecordRequest(content, date, context)
-                ?: return@withContext Result.failure(Exception("Could not parse record — Nurse ID missing"))
-
-            val response = apiService.syncRecord(request)
-            if (response.success) {
-                Result.success("Synced ${latestFile.name}: ${response.message}")
-            } else {
-                Result.failure(Exception(response.message ?: "Sync failed"))
-            }
+            syncReportEntity(context, latestReport)
         } catch (e: Exception) {
             Log.e("SyncRepository", "Record sync error", e)
             Result.failure(e)
         }
     }
 
+    suspend fun syncPendingRecords(context: Context): Result<Int> = withContext(Dispatchers.IO) {
+        val reportDao = AggregatorDatabase.getInstance(context).patientReportDao()
+        val pendingReports = reportDao.getPendingSyncReports()
+        if (pendingReports.isEmpty()) return@withContext Result.success(0)
+
+        var syncedCount = 0
+        pendingReports.forEach { report ->
+            val result = syncReportEntity(context, report)
+            if (result.isSuccess) {
+                syncedCount++
+            } else {
+                return@withContext Result.failure(
+                    result.exceptionOrNull()
+                        ?: Exception("Failed syncing pending report for ${report.patientName} on ${report.reportDate}")
+                )
+            }
+        }
+
+        Result.success(syncedCount)
+    }
+
     // Legacy sync — sends raw text blob to /api/reports. Kept so nothing breaks.
     suspend fun syncLatestReport(context: Context): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val appFilesDir = context.getExternalFilesDir(null) ?: return@withContext Result.failure(Exception("No storage"))
-            val nursingDir = File(appFilesDir, "NursingDevice")
-            if (!nursingDir.exists()) return@withContext Result.failure(Exception("No NursingDevice folder"))
-
-            val lastUpdatedFile = nursingDir.listFiles()
-                ?.filter { it.isDirectory }
-                ?.flatMap { it.listFiles()?.toList() ?: emptyList() }
-                ?.filter { it.isFile && it.extension == "txt" }
-                ?.maxByOrNull { it.lastModified() }
-
-            if (lastUpdatedFile == null) {
+            val latestReport = AggregatorDatabase.getInstance(context).patientReportDao().getLatestReport()
+            if (latestReport == null) {
                 return@withContext Result.failure(Exception("No report files found in any folder"))
             }
 
-            val date = lastUpdatedFile.parentFile?.name ?: "Unknown Date"
-            val content = lastUpdatedFile.readText()
-            val fileName = lastUpdatedFile.name
+            val date = latestReport.reportDate
+            val content = latestReport.content
+            val fileName = "${latestReport.patientName.replace(" ", "_")}_${latestReport.reportDate}.txt"
 
             val deviceId = Secure.getString(context.contentResolver, Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
             val receivedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).format(Date())
