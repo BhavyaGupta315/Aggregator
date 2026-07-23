@@ -48,6 +48,16 @@
             android:textAllCaps="false"
             android:textColor="@color/white" />
 
+        <Button
+            android:id="@+id/wifiRetryButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="@color/med_text_secondary"
+            android:text="Force Retry Wi-Fi Direct"
+            android:textAllCaps="false"
+            android:textColor="@color/white" />
+
         <TextView
             android:id="@+id/wifiLogText"
             android:layout_width="match_parent"

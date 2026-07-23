@@ -97,6 +97,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!AggregatorSession.isUnlocked) {
+            startActivity(Intent(this, AuthActivity::class.java))
+            finish()
+            return
+        }
         if (::fileListAdapter.isInitialized) loadCurrentDirectory()
     }
 
