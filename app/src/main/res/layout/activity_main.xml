@@ -64,7 +64,7 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:text="Sync"
+                android:text="Sync Today's Notes"
                 android:textAllCaps="false"
                 android:textSize="14sp"
                 android:textColor="@color/white"
@@ -84,6 +84,17 @@
                 android:layout_marginStart="6dp"/>
 
         </LinearLayout>
+
+        <Button
+            android:id="@+id/SyncAllNotesButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="Sync All Notes"
+            android:textAllCaps="false"
+            android:textSize="14sp"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/med_green_primary" />
 
     </LinearLayout>
 

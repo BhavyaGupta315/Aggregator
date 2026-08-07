@@ -43,7 +43,10 @@ class SyncActivity : AppCompatActivity() {
         logText = findViewById(R.id.logText)
 
         val patientName = intent.getStringExtra("patient_name") ?: "Unknown"
-        prepareTodayRecord(patientName)
+        when (intent.getStringExtra(EXTRA_SYNC_MODE) ?: MODE_TODAY) {
+            MODE_ALL -> prepareAllRecords(patientName)
+            else -> prepareTodayRecord(patientName)
+        }
     }
 
     private fun prepareTodayRecord(patientName: String) {
@@ -82,6 +85,46 @@ class SyncActivity : AppCompatActivity() {
         }
     }
 
+    private fun prepareAllRecords(patientName: String) {
+        try {
+            val currentPatient = PatientManager(this).getCurrentPatient()
+                ?: throw IllegalStateException("No patient is loaded.")
+            val reportDao = AggregatorDatabase.getInstance(this).patientReportDao()
+            val files = reportDao.getAvailableDates(currentPatient.id)
+                .flatMap { date -> reportDao.getReportsForDay(currentPatient.id, date) }
+                .sortedByDescending { it.reportDate }
+                .map { report ->
+                    val safeName = report.patientName.ifBlank { patientName }
+                        .replace(" ", "_")
+                    FileData(
+                        name = "${safeName}_${report.reportDate}.txt",
+                        content = report.content.toByteArray(Charsets.UTF_8)
+                    )
+                }
+
+            if (files.isEmpty()) {
+                val msg = "No notes found for $patientName."
+                MyHostApduService.setTextForTransfer(msg)
+                statusText.text = "No Notes Found"
+                fileNameText.text = "No local notes exist for this patient."
+                logText.text = "Will transmit empty history alert to receiver.\n"
+            } else {
+                MyHostApduService.setMultipleFilesForTransfer(files)
+                statusText.text = "Ready to Sync All Notes"
+                fileNameText.text = "Files loaded: ${files.size}\nTotal size: ${files.sumOf { it.content.size }} bytes"
+                logText.text = if (TransferModeStore.isWifiDirect(this)) {
+                    "Ready to transmit all notes over Wi-Fi Direct.\n"
+                } else {
+                    "Hold nursing device near reader to transfer all notes.\n"
+                }
+            }
+            launchWifiDirectIfNeeded()
+        } catch (e: Exception) {
+            statusText.text = "System Error"
+            fileNameText.text = e.message
+        }
+    }
+
     private fun launchWifiDirectIfNeeded() {
         if (!TransferModeStore.isWifiDirect(this) || wifiDirectLaunched) return
         wifiDirectLaunched = true
@@ -104,5 +147,11 @@ class SyncActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         MyHostApduService.resetTransferState()
+    }
+
+    companion object {
+        const val EXTRA_SYNC_MODE = "sync_mode"
+        const val MODE_TODAY = "today"
+        const val MODE_ALL = "all"
     }
 }

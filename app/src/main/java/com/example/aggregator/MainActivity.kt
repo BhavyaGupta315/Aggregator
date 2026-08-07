@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
 
         val sharePatientBtn = findViewById<Button>(R.id.sharePatientBtn)
         val syncButton = findViewById<Button>(R.id.SenderButton)
+        val syncAllButton = findViewById<Button>(R.id.SyncAllNotesButton)
         val updateButton = findViewById<Button>(R.id.ReceiverButton)
         val transportSwitch = findViewById<Switch>(R.id.transportModeSwitch)
         transportSwitch.isChecked = TransferModeStore.isWifiDirect(this)
@@ -61,7 +62,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         sharePatientBtn.setOnClickListener {
-            val patientName = intent.getStringExtra("patient_name") ?: return@setOnClickListener
             startActivity(Intent(this, PatientShareActivity::class.java).apply {
                 putExtra("patient_name", patientName)
             })
@@ -86,6 +86,15 @@ class MainActivity : AppCompatActivity() {
             val pName = intent.getStringExtra("patient_name") ?: "Unknown"
             startActivity(Intent(this, SyncActivity::class.java).apply {
                 putExtra("patient_name", pName)
+                putExtra(SyncActivity.EXTRA_SYNC_MODE, SyncActivity.MODE_TODAY)
+            })
+        }
+
+        syncAllButton.setOnClickListener {
+            val pName = intent.getStringExtra("patient_name") ?: "Unknown"
+            startActivity(Intent(this, SyncActivity::class.java).apply {
+                putExtra("patient_name", pName)
+                putExtra(SyncActivity.EXTRA_SYNC_MODE, SyncActivity.MODE_ALL)
             })
         }
 

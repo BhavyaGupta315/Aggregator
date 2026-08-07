@@ -741,7 +741,10 @@ private class WifiApduProcessor(
         handleBytes(command, snapshot.fileContent, snapshot.fileMimeType ?: "text/plain", "F")
 
     private fun handleMultiFile(command: ByteArray): ByteArray {
-        if (currentFileIndex >= snapshot.files.size) return Utils.FILE_NOT_READY_SW
+        if (currentFileIndex >= snapshot.files.size) {
+            if (Arrays.equals(command, Utils.GET_FILE_INFO_COMMAND)) return Utils.SELECT_OK_SW
+            return Utils.FILE_NOT_READY_SW
+        }
         val file = snapshot.files[currentFileIndex]
         val response = handleBytes(command, file.content, file.name, "M")
         if (Arrays.equals(command, Utils.GET_NEXT_DATA_CHUNK_COMMAND) && fileOffset >= file.content.size) {

@@ -322,6 +322,11 @@ class MyHostApduService : HostApduService() {
                     "HCE_SERVICE",
                     "Sending chunk: $fileChunkOffset / ${currentFile.content.size}"
                 )
+                if (fileChunkOffset >= currentFile.content.size) {
+                    currentFileIndex++
+                    fileChunkOffset = 0
+                    Log.d("HCE_SERVICE", "Appended file transfer complete.")
+                }
                 return Utils.concatArrays(chunk, Utils.SELECT_OK_SW)
             }
 
