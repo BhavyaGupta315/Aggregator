@@ -64,7 +64,7 @@
                 android:layout_width="0dp"
                 android:layout_height="48dp"
                 android:layout_weight="1"
-                android:text="@string/sync"
+                android:text="Sync"
                 android:textAllCaps="false"
                 android:textSize="14sp"
                 android:textColor="@color/white"
