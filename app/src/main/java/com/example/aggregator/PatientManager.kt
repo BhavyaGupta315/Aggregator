@@ -7,6 +7,9 @@ data class Patient(
     val age: Int,
     val gender: String,
     val bloodType: String,
+    val sugar: String = "",
+    val height: String = "",
+    val weight: String = "",
     val medication: String = "",
     val description: String = "",
     val id: String = System.currentTimeMillis().toString()
@@ -26,6 +29,9 @@ class PatientManager(private val context: Context) {
                 age = patient.age,
                 gender = patient.gender,
                 bloodType = patient.bloodType,
+                sugar = patient.sugar,
+                height = patient.height,
+                weight = patient.weight,
                 medication = patient.medication,
                 description = patient.description,
                 isCurrent = true
@@ -44,6 +50,9 @@ fun PatientEntity.toDomain(): Patient =
         age = age,
         gender = gender,
         bloodType = bloodType,
+        sugar = sugar,
+        height = height,
+        weight = weight,
         medication = medication,
         description = description,
         id = patientId

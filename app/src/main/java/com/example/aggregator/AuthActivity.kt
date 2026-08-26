@@ -47,6 +47,9 @@ class AuthActivity : AppCompatActivity() {
         val age       = findViewById<EditText>(R.id.patientAge).text.toString().trim()
         val gender    = findViewById<EditText>(R.id.patientGender).text.toString().trim()
         val bloodType = findViewById<EditText>(R.id.patientBloodType).text.toString().trim()
+        val sugar     = findViewById<EditText>(R.id.patientSugar).text.toString().trim()
+        val height    = findViewById<EditText>(R.id.patientHeight).text.toString().trim()
+        val weight    = findViewById<EditText>(R.id.patientWeight).text.toString().trim()
         val pin       = findViewById<EditText>(R.id.pinInput).text.toString().trim()
 
         if (name.isEmpty() || age.isEmpty() || gender.isEmpty() || bloodType.isEmpty()) {
@@ -65,7 +68,10 @@ class AuthActivity : AppCompatActivity() {
             name      = name,
             age       = age.toIntOrNull() ?: 0,
             gender    = gender,
-            bloodType = bloodType
+            bloodType = bloodType,
+            sugar     = sugar,
+            height    = height,
+            weight    = weight
         ).let { if (typedId.isEmpty()) it else it.copy(id = typedId) }
 
         // Provision the PIN-derived DB key BEFORE any DB access (the DB is encrypted).
@@ -172,7 +178,10 @@ class AuthActivity : AppCompatActivity() {
                         name = cloudPatient.name,
                         age = cloudPatient.age ?: 0,
                         gender = cloudPatient.gender.orEmpty(),
-                        bloodType = cloudPatient.bloodType.orEmpty()
+                        bloodType = cloudPatient.bloodType.orEmpty(),
+                        sugar = cloudPatient.sugar.orEmpty(),
+                        height = cloudPatient.height.orEmpty(),
+                        weight = cloudPatient.weight.orEmpty()
                     )
                     patientManager.savePatient(localPatient)
 

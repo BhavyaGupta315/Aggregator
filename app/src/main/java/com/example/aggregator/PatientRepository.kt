@@ -29,7 +29,10 @@ data class PatientRegisterRequest(
     @SerializedName("name") val name: String,
     @SerializedName("age") val age: Int?,
     @SerializedName("gender") val gender: String?,
-    @SerializedName("bloodType") val bloodType: String?
+    @SerializedName("bloodType") val bloodType: String?,
+    @SerializedName("sugar") val sugar: String?,
+    @SerializedName("height") val height: String?,
+    @SerializedName("weight") val weight: String?
 )
 
 data class PatientRegisterResponse(
@@ -56,7 +59,10 @@ data class PatientCloudData(
     @SerializedName("name") val name: String,
     @SerializedName("age") val age: Int?,
     @SerializedName("gender") val gender: String?,
-    @SerializedName("bloodType") val bloodType: String?
+    @SerializedName("bloodType") val bloodType: String?,
+    @SerializedName("sugar") val sugar: String?,
+    @SerializedName("height") val height: String?,
+    @SerializedName("weight") val weight: String?
 )
 
 /** Login result: the cloud patient profile plus any stored credentials to restore. */
@@ -121,7 +127,10 @@ class PatientRepository {
             name = patient.name,
             age = patient.age,
             gender = patient.gender,
-            bloodType = patient.bloodType
+            bloodType = patient.bloodType,
+            sugar = patient.sugar,
+            height = patient.height,
+            weight = patient.weight
         )
 
         val primaryResult = runCatching { primaryApi.registerPatient(request) }
@@ -338,6 +347,9 @@ class PatientRepository {
             appendLine("Age: ${patient.age ?: 0}")
             appendLine("Gender: ${patient.gender.orEmpty()}")
             appendLine("Blood Type: ${patient.bloodType.orEmpty()}")
+            appendLine("Blood Sugar: ${patient.sugar.orEmpty()}")
+            appendLine("Height: ${patient.height.orEmpty()}")
+            appendLine("Weight: ${patient.weight.orEmpty()}")
             appendLine("Nurse ID: ${record.nurseId.orEmpty()}")
             appendLine("Blood Pressure: ${record.bp.orEmpty()}")
             appendLine("Heart Rate: ${record.hr?.toString() ?: ""} bpm")
