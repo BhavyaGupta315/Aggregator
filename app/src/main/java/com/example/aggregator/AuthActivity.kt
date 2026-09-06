@@ -2,8 +2,10 @@ package com.example.aggregator
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -24,8 +26,11 @@ class AuthActivity : AppCompatActivity() {
     private lateinit var patientManager: PatientManager
     private val patientRepo = PatientRepository()
     private lateinit var patientIdInput: EditText
+    private lateinit var pinInput: EditText
+    private lateinit var pinVisibilityToggle: TextView
     private lateinit var registerButton: Button
     private lateinit var loginButton: Button
+    private var isPinVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,11 +39,25 @@ class AuthActivity : AppCompatActivity() {
 
         patientManager = PatientManager(this)
         patientIdInput = findViewById(R.id.patientIdInput)
+        pinInput = findViewById(R.id.pinInput)
+        pinVisibilityToggle = findViewById(R.id.pinVisibilityToggle)
         registerButton = findViewById(R.id.registerBtn)
         loginButton = findViewById(R.id.loginBtn)
 
+        pinVisibilityToggle.setOnClickListener { togglePinVisibility() }
         registerButton.setOnClickListener { handleRegister() }
         loginButton.setOnClickListener { handleLogin() }
+    }
+
+    private fun togglePinVisibility() {
+        isPinVisible = !isPinVisible
+        pinInput.inputType = InputType.TYPE_CLASS_NUMBER or if (isPinVisible) {
+            InputType.TYPE_NUMBER_VARIATION_NORMAL
+        } else {
+            InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        }
+        pinInput.setSelection(pinInput.text.length)
+        pinVisibilityToggle.text = if (isPinVisible) "Hide" else "Show"
     }
 
     private fun handleRegister() {
@@ -47,10 +66,7 @@ class AuthActivity : AppCompatActivity() {
         val age       = findViewById<EditText>(R.id.patientAge).text.toString().trim()
         val gender    = findViewById<EditText>(R.id.patientGender).text.toString().trim()
         val bloodType = findViewById<EditText>(R.id.patientBloodType).text.toString().trim()
-        val sugar     = findViewById<EditText>(R.id.patientSugar).text.toString().trim()
-        val height    = findViewById<EditText>(R.id.patientHeight).text.toString().trim()
-        val weight    = findViewById<EditText>(R.id.patientWeight).text.toString().trim()
-        val pin       = findViewById<EditText>(R.id.pinInput).text.toString().trim()
+        val pin       = pinInput.text.toString().trim()
 
         if (name.isEmpty() || age.isEmpty() || gender.isEmpty() || bloodType.isEmpty()) {
             Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
@@ -68,10 +84,7 @@ class AuthActivity : AppCompatActivity() {
             name      = name,
             age       = age.toIntOrNull() ?: 0,
             gender    = gender,
-            bloodType = bloodType,
-            sugar     = sugar,
-            height    = height,
-            weight    = weight
+            bloodType = bloodType
         ).let { if (typedId.isEmpty()) it else it.copy(id = typedId) }
 
         // Provision the PIN-derived DB key BEFORE any DB access (the DB is encrypted).
@@ -136,7 +149,7 @@ class AuthActivity : AppCompatActivity() {
 
     private fun handleLogin() {
         val patientId = patientIdInput.text.toString().trim()
-        val pin       = findViewById<EditText>(R.id.pinInput).text.toString().trim()
+        val pin       = pinInput.text.toString().trim()
         if (patientId.isEmpty()) {
             Toast.makeText(this, "Enter your Patient ID", Toast.LENGTH_SHORT).show()
             return
@@ -178,10 +191,7 @@ class AuthActivity : AppCompatActivity() {
                         name = cloudPatient.name,
                         age = cloudPatient.age ?: 0,
                         gender = cloudPatient.gender.orEmpty(),
-                        bloodType = cloudPatient.bloodType.orEmpty(),
-                        sugar = cloudPatient.sugar.orEmpty(),
-                        height = cloudPatient.height.orEmpty(),
-                        weight = cloudPatient.weight.orEmpty()
+                        bloodType = cloudPatient.bloodType.orEmpty()
                     )
                     patientManager.savePatient(localPatient)
 
